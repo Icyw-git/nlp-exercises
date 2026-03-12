@@ -1,0 +1,55 @@
+# Python 相关
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+env/
+.env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE 相关
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter 相关
+.ipynb_checkpoints/
+*.ipynb
+!*.ipynb  # 如果你想保留notebook文件，可以取消这行注释
+
+# 数据文件
+data/
+*.csv
+*.json
+*.txt
+*.bin
+
+# 模型文件
+models/
+*.pth
+*.pt
+*.bin
+
+# 日志文件
+logs/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 配置文件
+*.ini
+*.cfg
+*.env
+
+# 编译产物
+build/
+dist/
+*.egg-info/
