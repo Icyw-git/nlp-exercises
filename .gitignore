@@ -18,10 +18,7 @@ venv.bak/
 *.swo
 *~
 
-# Jupyter 相关
-.ipynb_checkpoints/
-*.ipynb
-!*.ipynb  # 如果你想保留notebook文件，可以取消这行注释
+
 
 # 数据文件
 data/
