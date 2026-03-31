@@ -202,6 +202,9 @@ class Decoder(nn.Module):
         return self.norm(x)
 
 
+class PositionEncoding(nn.Module):
+    def __init__(self,args):
+        super().__init__()
 
 
 
