@@ -87,7 +87,10 @@ class MultiheadAttention(nn.Module):
             output=self.wo(output)
             output=self.resid_dropout(output)
             return output
-        #layernorm层
+
+
+#layernorm层
+
 class LayerNorm(nn.Module):
     def __init__(self,features,eps=1e-6):
         super().__init__()
@@ -103,6 +106,65 @@ class LayerNorm(nn.Module):
 
         #在最后一个维度发生了广播
         return self.a_2*(x-mean)/(std+self.eps)+self.b_2
+
+class MLP(nn.Module):
+    def __init__(self,dim,hidden_dim,dropout):
+        super().__init__()
+
+        #第一层：从输入维度变换至隐藏维度
+        self.w1=nn.Linear(dim,hidden_dim,bias=False)
+        self.w2=nn.Linear(hidden_dim,dim,bias=False)
+        #定义dropout
+        self.dropout=nn.Dropout(dropout)
+
+    def forward(self,x):
+        x=self.w1(x)
+        x=F.relu(x)
+        x=self.w2(x)
+        x=self.dropout(x)
+        return x
+
+
+#定义编码层
+class EncoderLayer(nn.Module):
+    def __init__(self,args):
+        super().__init__()
+
+        #需要两个子层结构
+        self.attention_norm=LayerNorm(args.n_embed)
+
+        #Encoder不需要掩码，is_casual=False
+        self.attention=MultiheadAttention(args,is_casual=False)
+        self.ffn_norm=LayerNorm(args.n_embed)
+        self.feed_forward=MLP(args.dim,args.dim,args.dropout)
+
+    def forward(self,x):
+        #注意力子层
+        x=self.attention_norm(x)
+        h=x+self.attention(x,x,x) #残差链接
+
+        #前馈神经网络
+        out=h+self.feed_forward(self.fnn_norm(h))
+
+
+        return out
+
+''' Encoder块'''
+
+class Encoder(nn.Module):
+    def __init__(self,args):
+        super().__init__()
+        self.layers=nn.ModuleList([EncoderLayer(args) for _ in range(args.n_layers)])
+
+        #通过一个层归一化
+        self.norm=LayerNorm(args.n_embed)
+    def forward(self,x):
+        for layer in self.layers:
+            x=layer(x)
+        return self.norm(x)
+
+
+
 
 
 
