@@ -50,6 +50,71 @@ class MultiheadAttention(nn.Module):
     def forward(self,q:torch.Tensor,k:torch.Tensor,v:torch.Tensor):
         batch_size,seq_len,_=q.size() #获取批次大小，序列长度
 
+        #计算q,k,v，通过线性层
+        xq,xk,xv=self.wq(q),self.wk(k),self.wv(v)
+
+        #拆分为多头注意力
+        xq=xq.view(batch_size,seq_len,self.n_heads,self.head_dim)
+        xk=xk.view(batch_size,seq_len,self.n_heads,self.head_dim)
+        xv=xv.view(batch_size,seq_len,self.n_heads,self.head_dim)
+
+        #转换维度
+        xq=xq.transpose(1,2)
+        xk=xk.transpose(1,2)
+        xv=xv.transpose(1,2)
+
+        #计算注意力分数
+        scores=torch.matmul(xq,xk.transpose(-2,-1))/math.sqrt(self.head_dim)  #这里要除以根号下头的维度，进行缩放，防止数据过大
+        if self.is_casual:
+            assert hasattr(self,'mask') #断言，确保模型有掩码属性,hasattr()函数用于检查对象是否具有指定的属性
+
+            #添加掩码
+            scores=scores+self.mask[:,:,:seq_len,:seq_len]
+
+            #计算softmax
+            scores=F.softmax(scores,dim=-1).type_as(xq) #type_as函数用法是保证softmax的输出类型与xq相同
+
+            #注意力的dropout
+            scores=self.attn_drpoout(scores)
+
+            #计算注意力输出
+            output=torch.matmul(scores,xv)
+
+            #合并多头
+            output=output.transpose(1,2).contiguous().view(batch_size,seq_len,-1)
+
+            #最后投影回残差流 这里的残差流是指输入和输出的维度相同，可以直接相加
+            output=self.wo(output)
+            output=self.resid_dropout(output)
+            return output
+        #layernorm层
+class LayerNorm(nn.Module):
+    def __init__(self,features,eps=1e-6):
+        super().__init__()
+        #利用线性矩阵做映射
+        self.a_2=nn.Parameter(torch.ones(features))
+        self.b_2=nn.Parameter(torch.zeros(features))
+        self.eps=eps
+
+    def forward(self,x):
+                #归一化
+        mean=x.mean(-1,keepdim=True)
+        std=x.std(-1,keepdin=True)
+
+        #在最后一个维度发生了广播
+        return self.a_2*(x-mean)/(std+self.eps)+self.b_2
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
