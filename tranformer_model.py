@@ -163,6 +163,46 @@ class Encoder(nn.Module):
             x=layer(x)
         return self.norm(x)
 
+class DecoderLayer(nn.Module):
+    def __init__(self,args):
+        super().__init__()
+
+        #需要三个子层结构
+        self.attention_norm1=LayerNorm(args.n_embed)
+        self.mask_attention=MultiheadAttention(args,is_casual=True)
+
+        self.attention_norm2=LayerNorm(args.n_embed)
+        self.attention=MultiheadAttention(args,is_casual=False)
+
+        self.ffn_norm=LayerNorm(args.n_embed)
+        self.feed_forward=MLP(args.dim,args.dim,args.dropout)
+
+    def forward(self,x,enc_out):
+        #第一个子层：掩码多头注意力
+        x=self.attention_norm1(x)
+        x= x+self.mask_attention(x,x,x)
+
+        #第二个子层：多头注意力，查询来自解码器的输入，键和值来自编码器的输出
+        x=self.attention_norm2(x)
+        h=x+self.attention(x,enc_out,enc_out)
+
+        #第三个子层：前馈神经网络
+        out=h+self.feed_forward(self.ffn_norm(h))
+        return out
+
+class Decoder(nn.Module):
+    def __init__(self,args):
+        super().__init__()
+        self.layers=nn.ModuleList([DecoderLayer(args) for _ in range(args.n_layers)])
+        self.norm=LayerNorm(args.n_embed)
+
+    def forward(self,x,enc_out):
+        for layer in self.layers:
+            x=layer(x,enc_out)
+        return self.norm(x)
+
+
+
 
 
 
