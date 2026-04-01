@@ -236,7 +236,7 @@ class Transformer(nn.Module):
 
         self.args=args
         #使用一个模块字典存储不同的模块
-        self.transformer=nn.ModuleDict(dict(wte=nn.embedding(args.vocab_size,args.n_embed),wpe=PositionEncoding(args),dropout=nn.Dropout(args.dropout),encoder=Encoder(args),decoder=Decoder(args)))
+        self.transformer=nn.ModuleDict(dict(wte=nn.Embedding(args.vocab_size,args.n_embed),wpe=PositionEncoding(args),dropout=nn.Dropout(args.dropout),encoder=Encoder(args),decoder=Decoder(args)))
 
         #最后的线性层，输出的是词表大小的概率
         self.lm_head=nn.Linear(args.n_embed,args.vocab_size,bias=False)
@@ -257,11 +257,13 @@ class Transformer(nn.Module):
 
     #初始化权重,其中的module来自于apply函数，会对模型的所有模块调用这个函数，module就是当前被调用的模块
     def _init_weights(self,module):
+        #isinstance函数用来判断一个对象是否是一个类的实例，或者是否是一个类的子类的实例，在这里用来判断当前模块的类型
+        #在module内会逐个判断当前模块的类型，若不匹配则跳过
         if isinstance(module,nn.Linear):
-            torch.nn.init.normal_(module.weight,mean=0,std=0.02)
+            torch.nn.init.normal_(module.weight,mean=0,std=0.02) #weight和bias是nn.Linear的参数，normal_函数用来初始化权重，mean是均值，std是标准差
             if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
-        elif isinstance(module,nn.embedding):
+        elif isinstance(module,nn.Embedding):
             torch.nn.init.normal_(module.weight,mean=0,std=0.02)
 
 
