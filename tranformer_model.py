@@ -255,6 +255,17 @@ class Transformer(nn.Module):
             n_params-= self.transformer.wte.weight.numel() #wte是词嵌入层，weight是它的权重参数，numel()函数返回这个权重参数的元素数量，即嵌入层的参数数量
         return n_params
 
+    #初始化权重,其中的module来自于apply函数，会对模型的所有模块调用这个函数，module就是当前被调用的模块
+    def _init_weights(self,module):
+        if isinstance(module,nn.Linear):
+            torch.nn.init.normal_(module.weight,mean=0,std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module,nn.embedding):
+            torch.nn.init.normal_(module.weight,mean=0,std=0.02)
+
+
+
 
 
 
