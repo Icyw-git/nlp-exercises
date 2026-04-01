@@ -266,6 +266,36 @@ class Transformer(nn.Module):
         elif isinstance(module,nn.Embedding):
             torch.nn.init.normal_(module.weight,mean=0,std=0.02)
 
+    def forward(self,idx,target=None):
+        #获取device位置，保证所有的计算在同一设备上进行
+        device=idx.device
+
+        batch,seq=idx.size()
+        assert seq <=self.args.block_size #确保小于最大长度
+
+        print('idx',idx.size())
+
+        #embedding编码
+        tok_embed=self.transformer.wte(idx)
+        print('tok_embed',tok_embed.size())
+
+        #position编码
+        pos_embed=self.transformer.wpe(tok_embed)
+
+        #进行dropout
+        x=self.dropout(pos_embed)
+        print('pos_embed',pos_embed.size())
+
+
+        #编码器
+        enc_out=self.transformer.encoder(x)
+        print('enc_out',enc_out.size())
+
+        #解码器
+        dec_out=self.transformer.decoder(x,enc_out)
+
+
+
 
 
 
