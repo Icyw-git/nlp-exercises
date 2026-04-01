@@ -1,7 +1,7 @@
 #导包
 import torch
 import torch.nn as nn
-import torch.functional as F
+import torch.nn.functional as F
 import math
 from dataclasses import dataclass
 from transformers import BertTokenizer
@@ -207,8 +207,8 @@ class PositionEncoding(nn.Module):
         super().__init__()
 
         #创建一个位置编码矩阵，大小为(max_len,dim)
-        pe=torch.zeros(args.max_len,args.n_embed)
-        position=torch.arange(0,args.max_len).unsqueeze(1)  #维数为(max_len,1)
+        pe=torch.zeros(args.block_size,args.n_embed)
+        position=torch.arange(0,args.block_size).unsqueeze(1)  #维数为(max_len,1)
         div_term=torch.exp(torch.arange(0,args.n_embed,2)*-(math.log(10000.0)/args.n_embed))
 
         #计算奇数位和偶数位
@@ -229,6 +229,23 @@ class PositionEncoding(nn.Module):
 class Transformer(nn.Module):
     def __init__(self,args):
         super().__init__()
+
+        #必须输入词表大小和block_size
+        assert args.vocab_size is not None #断言，确保词表大小不为None
+        assert args.block_size is not None
+
+        self.args=args
+        #使用一个模块字典存储不同的模块
+        self.tranformer=nn.ModuleDict(dict(wte=nn.embedding(args.vocab_size,args.n_embed),wpe=PositionEncoding(args),dropout=nn.Dropout(args.dropout),encoder=Encoder(args),decoder=Decoder(args)))
+
+        #最后的线性层，输出的是词表大小的概率
+        self.lm_head=nn.Linear(args.n_embed,args.vocab_size,bias=False)
+
+        #初始化所有的权重
+        self.apply(self._init_weights)
+
+        #查看所有参数的数量
+
 
 
 
