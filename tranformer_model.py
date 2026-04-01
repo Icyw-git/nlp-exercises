@@ -236,15 +236,28 @@ class Transformer(nn.Module):
 
         self.args=args
         #使用一个模块字典存储不同的模块
-        self.tranformer=nn.ModuleDict(dict(wte=nn.embedding(args.vocab_size,args.n_embed),wpe=PositionEncoding(args),dropout=nn.Dropout(args.dropout),encoder=Encoder(args),decoder=Decoder(args)))
+        self.transformer=nn.ModuleDict(dict(wte=nn.embedding(args.vocab_size,args.n_embed),wpe=PositionEncoding(args),dropout=nn.Dropout(args.dropout),encoder=Encoder(args),decoder=Decoder(args)))
 
         #最后的线性层，输出的是词表大小的概率
         self.lm_head=nn.Linear(args.n_embed,args.vocab_size,bias=False)
 
         #初始化所有的权重
-        self.apply(self._init_weights)
+        self.apply(self._init_weights) #apply是nn.Module的一个方法，会对模型的所有模块调用括号内的函数
 
         #查看所有参数的数量
+        print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
+
+    def get_num_params(self,non_embedding=False):
+        #non_embedding：是否统计嵌入层的参数
+        n_params=sum(p.numel() for p in self.parameters())  #numel()函数返回一个张量的元素数量，统计所有的参数数量
+        #若不统计embedding层，则最后减去嵌入层的参数数量
+        if non_embedding:
+            n_params-= self.transformer.wte.weight.numel() #wte是词嵌入层，weight是它的权重参数，numel()函数返回这个权重参数的元素数量，即嵌入层的参数数量
+        return n_params
+
+
+
+
 
 
 
