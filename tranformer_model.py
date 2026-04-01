@@ -206,6 +206,34 @@ class PositionEncoding(nn.Module):
     def __init__(self,args):
         super().__init__()
 
+        #创建一个位置编码矩阵，大小为(max_len,dim)
+        pe=torch.zeros(args.max_len,args.n_embed)
+        position=torch.arange(0,args.max_len).unsqueeze(1)  #维数为(max_len,1)
+        div_term=torch.exp(torch.arange(0,args.n_embed,2)*-(math.log(10000.0)/args.n_embed))
+
+        #计算奇数位和偶数位
+        pe[:,0::2]=torch.sin(position*div_term) #奇数位
+        pe[:,1::2]=torch.cos(position*div_term) #偶数位
+
+        #增加批次维度
+        pe=pe.unsqueeze(0)
+
+        #注册至缓存区
+        self.register_buffer('pe',pe)
+
+    def forward(self,x):
+        #将位置编码加在embedding层
+        x=x+self.pe[:,:x.size(1),:]
+        return x
+
+class Transformer(nn.Module):
+    def __init__(self,args):
+        super().__init__()
+
+
+
+
+
 
 
 
