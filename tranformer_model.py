@@ -299,8 +299,8 @@ class Transformer(nn.Module):
         if targets is not None:
             #训练阶段，需要计算损失，targets的维度是(batch,seq)，而logits的维度是(batch,seq,vocab_size)，所以需要将logits和targets都展平为(batch*seq,vocab_size)和(batch*seq)，才能计算交叉熵损失
             #如果给了target就计算loss
-            logits=self.lm_head(x) #通过线性层得到词表大小的
-            loss =F.cross_entropy(logits.view(-1,logits.size(-1),targets.view(-1)),targets.view(-1))
+            logits=self.lm_head(x) #通过线性层得到词表大小的输出
+            loss =F.cross_entropy(logits.view(-1,logits.size(-1)),targets.view(-1))
 
         else:
             #推理阶段，只需要最后一个位置的logits，因为在生成文本时，每次只生成一个token，所以只需要最后一个位置的输出即可
@@ -310,8 +310,8 @@ class Transformer(nn.Module):
         return logits,loss
 
 def main():
-    args=ModelArgs(100,4,100,0.1,512,1000,1000,2)
-    text='我喜欢'
+    args=ModelArgs(256,16,256,0.1,512,1000,1000,2)
+    text='我讨厌'
     tokenizer=BertTokenizer.from_pretrained('bert-base-chinese')
     input_token=tokenizer(text,return_tensors='pt',max_length=args.max_len,truncation=True,padding='max_length')
     args.vocab_size=tokenizer.vocab_size
@@ -321,8 +321,11 @@ def main():
     logits,loss=transformer(inputs_id)
 
     predicted_ids=torch.argmax(logits,dim=-1).item()
-    outputs=tokenizer.decode(predicted_ids)
-    print(outputs)
+    print(tokenizer.decode(predicted_ids))
+
+
+
+
 
 if __name__=='__main__':
     main()
