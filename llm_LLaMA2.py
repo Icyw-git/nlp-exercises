@@ -27,6 +27,6 @@ class ModelConfig(PretrainedConfig):
         self.max_seq_len=max_seq_len,
         self.dropout=dropout,
         self.flash_attn=flash_attn
-        super().__init__(**kwargs) #调用父类的构造函数，传递任何额外的参数（如果有的话）
+        super().__init__(**kwargs) #调用父类的构造函数，传递任何额外的参数（如果有的话），以字典的形式传递给父类的构造函数，以确保父类能够正确地处理这些参数
 
 #使用args时，默认使用ModelConfig类的参数
