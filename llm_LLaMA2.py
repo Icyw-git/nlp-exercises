@@ -117,5 +117,5 @@ if __name__=='__main__':
 
 #测试precompute_freqs_cis函数
     freqs_cos,freqs_sin=precompute_freqs_cis(dim=128,end=32)
-    print(freqs_cos)
+    print(freqs_cos.shape)
     print(freqs_sin)
