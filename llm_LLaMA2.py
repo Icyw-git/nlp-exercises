@@ -90,7 +90,7 @@ def precompute_freqs_cis(dim:int,end:int,theta:float=10000.0) -> tuple[torch.Ten
         theta (float, optional): 旋转角度的基数，默认为10000.0。这个值用于计算旋转角度，通常选择一个较大的值以确保旋转角度在合理范围内。
     """
 
-    freqs=1.0/(theta **(torch.arange(0,dim,2)[:,(dim//2)].float() / dim)) #对应的公式为：freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[:, (dim // 2)].float() / dim))，其中torch.arange(0, dim, 2)生成一个从0到dim-1的偶数序列，表示特征向量中实部的索引。[:, (dim // 2)]将这个序列调整为一个列向量，以便后续计算。然后，将这个列向量除以dim，并使用theta作为基数计算频率。
+    freqs=1.0/(theta **(torch.arange(0,dim,2)[:(dim//2)].float() / dim)) #对应的公式为：freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[:, (dim // 2)].float() / dim))，其中torch.arange(0, dim, 2)生成一个从0到dim-1的偶数序列，表示特征向量中实部的索引。[:, (dim // 2)]将这个序列调整为一个列向量，以便后续计算。然后，将这个列向量除以dim，并使用theta作为基数计算频率。
     t=torch.arange(0,end,device=device) #表示位置索引的序列，从0到end-1，表示需要预计算的旋转嵌入的数量。这个序列将用于计算每个位置的旋转角度。
     freqs=torch.outer(t,freqs).float() #相乘得到一个形状为 (end, dim//2) 的张量，其中每个元素表示位置索引与对应频率的乘积，表示每个位置的旋转角度。
     freqs_cos=torch.cos(freqs)
@@ -115,3 +115,7 @@ if __name__=='__main__':
     print(repeat_kv(x,2).shape)
 
 
+#测试precompute_freqs_cis函数
+    freqs_cos,freqs_sin=precompute_freqs_cis(dim=128,end=32)
+    print(freqs_cos)
+    print(freqs_sin)
