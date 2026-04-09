@@ -85,7 +85,7 @@ def precompute_freqs_cis(dim:int,end:int,theta:float=10000.0) -> tuple[torch.Ten
     """预计算旋转嵌入的频率。
 
     Args:
-        dim (int): 模型维度，即每个位置的特征向量的维度。
+        dim (int): 这里的dim指head_dim，即每个注意力头的维度。旋转嵌入需要为每个注意力头的特征向量计算旋转角度，因此dim表示每个头的维度。
         end (int): 最大序列长度，即需要预计算的旋转嵌入的数量。
         theta (float, optional): 旋转角度的基数，默认为10000.0。这个值用于计算旋转角度，通常选择一个较大的值以确保旋转角度在合理范围内。
     """
@@ -100,7 +100,7 @@ def precompute_freqs_cis(dim:int,end:int,theta:float=10000.0) -> tuple[torch.Ten
 
 
 def reshape_for_broadcast(freqs_cis:torch.Tensor,x:torch.Tensor):
-    ndim=x.ndim #获取张量的维度
+    ndim=x.ndim #获取张量的维度，ndim是输入张量x的维度，表示张量的轴数。例如，如果x是一个形状为 (batch_size, seq_len, n_heads, head_dim) 的张量，那么ndim将等于4。
 
     assert 0<=1<ndim #确保维度1在张量的维度范围内
 
@@ -109,6 +109,30 @@ def reshape_for_broadcast(freqs_cis:torch.Tensor,x:torch.Tensor):
     #将freqs_cis的形状调整为 (1, seq_len, 1, dim)，以便与输入张量x进行广播操作
     return freqs_cis.unsqueeze(0).unsqueeze(-2) #首先使用unsqueeze(0)在第0维添加一个新的维度，使得张量的形状变为 (1, seq_len, dim)。然后，使用unsqueeze(-2)在倒数第二维添加一个新的维度，使得张量的形状变为 (1, seq_len, 1, dim)，以适应输入张量x的形状，并允许在后续计算中进行广播操作。
 
+
+#实现旋转嵌入
+def rotary_emb(xq:torch.Tensor,xk:torch.Tensor,freqs_cos:torch.Tensor,freqs_sin:torch.Tensor) ->tuple[torch.Tensor,torch.Tensor]:
+    #将旋转嵌入应用至q,k矩阵
+    #重塑q,k维度，分离实部和虚部
+    xq_r,xq_i=xq.float().reshape(xq.shape[:-1]+(-1,2)).unbind(-1) #这里reshape将输入张量xq的最后一个维度调整为2，表示实部和虚部。具体来说，xq.shape[:-1]表示输入张量xq的所有维度，除了最后一个维度。通过在最后一个维度上添加(-1, 2)，我们将最后一个维度调整为2，表示实部和虚部。然后，使用unbind(-1)将这个新的维度分离成两个独立的张量xq_r和xq_i，分别表示实部和虚部。
+    xk_r,xk_i=xk.float().reshape(xk.shape[:-1]+(-1,2)).unbind(-1)
+
+    #将频率张量重新塑形
+    freqs_cos=reshape_for_broadcast(freqs_cos,xq_r)
+    freqs_sin=reshape_for_broadcast(freqs_sin,xq_r)
+
+    #应用旋转公式
+    xq_out_r=xq_r*freqs_cos-xq_i*freqs_sin #根据旋转公式，实部的输出xq_out_r是输入张量xq的实部xq_r乘以频率张量freqs_cos减去输入张量xq的虚部xq_i乘以频率张量freqs_sin。这个公式表示了实部在旋转过程中的变化。
+    xq_out_i=xq_r*freqs_sin+xq_i*freqs_cos
+    xk_out_r=xk_r*freqs_cos-xk_i*freqs_sin
+    xk_out_i=xk_r*freqs_sin+xk_i*freqs_cos
+
+    #将最后两个维度合并
+    xq_out=torch.stack([xq_out_r,xq_out_i],dim=-1).flatten(3)
+    xk_out=torch.stack([xk_out_r,xk_out_i],dim=-1).flatten(3)
+    #stack函数将实部和虚部的输出张量沿着最后一个维度进行堆叠，形成一个新的张量，其中实部和虚部被组合在一起。然后，使用flatten(3)将最后两个维度合并成一个维度，以适应后续的计算需求,3表示从第3维开始将后续的维度合并成一个维度。
+
+    return xq_out.type_as(xq),xk_out.type_as(xk)
 
 #测试
 if __name__=='__main__':
@@ -130,7 +154,17 @@ if __name__=='__main__':
     print(freqs_sin)
 
 #测试reshape_for_broadcast函数
-x = torch.randn(1, 50, 8, 16)
-freqs_cis = torch.randn(50, 16)
-reshaped_freqs_cis = reshape_for_broadcast(freqs_cis, x)
-print(reshaped_freqs_cis.shape)
+    x = torch.randn(1, 50, 8, 16)
+    freqs_cis = torch.randn(50, 16)
+    reshaped_freqs_cis = reshape_for_broadcast(freqs_cis, x)
+    print(reshaped_freqs_cis.shape)
+
+
+#测试rotary_emb函数
+    xq=torch.randn(1,32,8,16)
+    xk=torch.randn(1,32,8,16)
+    freqs_cos,freqs_sin=precompute_freqs_cis(dim=16,end=32)
+    xq_out,xk_out=rotary_emb(xq,xk,freqs_cos,freqs_sin)
+    print(xq_out.shape)
+    print(xk_out.shape)
+    print(xq_out)
