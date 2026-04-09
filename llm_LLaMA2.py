@@ -36,6 +36,8 @@ class ModelConfig(PretrainedConfig):
 
 #构建RMSNorm类
 #RMSNorm是一种归一化方法，类似于LayerNorm，但它只使用均方根（RMS）来进行归一化，而不使用均值。这种方法在某些情况下可以提高模型的训练稳定性和性能。
+#公式为：RMSNorm(x) = x * (weight / sqrt(mean(x^2) + eps))
+
 class RMSNorm(nn.Module):
     def __init__(self,dim:int,eps:float):
         super().__init__()
@@ -51,3 +53,12 @@ class RMSNorm(nn.Module):
 
 
 
+
+
+#测试
+if __name__=='__main__':
+    norm=RMSNorm(dim=128,eps=1e-5)
+    input_tensor=torch.randn(1,50,128)
+    output=norm(input_tensor)
+
+    print(output.shape)
