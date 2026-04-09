@@ -99,6 +99,15 @@ def precompute_freqs_cis(dim:int,end:int,theta:float=10000.0) -> tuple[torch.Ten
     return freqs_cos,freqs_sin
 
 
+def reshape_for_broadcast(freqs_cis:torch.Tensor,x:torch.Tensor):
+    ndim=x.ndim #获取张量的维度
+
+    assert 0<=1<ndim #确保维度1在张量的维度范围内
+
+    assert freqs_cis.shape==(x.shape[1],x.shape[-1]) #确保freqs_cis的形状与x的形状兼容，freqs_cis的形状应该是 (seq_len, dim)，其中seq_len是x的第二维长度，dim是x的最后一维长度
+
+    #将freqs_cis的形状调整为 (1, seq_len, 1, dim)，以便与输入张量x进行广播操作
+    return freqs_cis.unsqueeze(0).unsqueeze(-2) #首先使用unsqueeze(0)在第0维添加一个新的维度，使得张量的形状变为 (1, seq_len, dim)。然后，使用unsqueeze(-2)在倒数第二维添加一个新的维度，使得张量的形状变为 (1, seq_len, 1, dim)，以适应输入张量x的形状，并允许在后续计算中进行广播操作。
 
 
 #测试
@@ -119,3 +128,9 @@ if __name__=='__main__':
     freqs_cos,freqs_sin=precompute_freqs_cis(dim=128,end=32)
     print(freqs_cos.shape)
     print(freqs_sin)
+
+#测试reshape_for_broadcast函数
+x = torch.randn(1, 50, 8, 16)
+freqs_cis = torch.randn(50, 16)
+reshaped_freqs_cis = reshape_for_broadcast(freqs_cis, x)
+print(reshaped_freqs_cis.shape)
