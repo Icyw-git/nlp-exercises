@@ -1,4 +1,7 @@
 from transformers import PretrainedConfig
+import torch
+import torch.nn as nn
+
 
 class ModelConfig(PretrainedConfig):
     model_type='Tiny-K'
@@ -30,3 +33,21 @@ class ModelConfig(PretrainedConfig):
         super().__init__(**kwargs) #调用父类的构造函数，传递任何额外的参数（如果有的话），以字典的形式传递给父类的构造函数，以确保父类能够正确地处理这些参数
 
 #使用args时，默认使用ModelConfig类的参数
+
+#构建RMSNorm类
+#RMSNorm是一种归一化方法，类似于LayerNorm，但它只使用均方根（RMS）来进行归一化，而不使用均值。这种方法在某些情况下可以提高模型的训练稳定性和性能。
+class RMSNorm(nn.Module):
+    def __init__(self,dim:int,eps:float):
+        super().__init__()
+        self.eps=eps
+        self.weight=nn.Parameter(torch.ones(dim))
+
+    def _norm(self,x):
+        return x*torch.rsqrt(x.pow(2).mean(-1,keepdim=True)+self.eps)
+
+    def forward(self,x):
+        output=self._norm(x.float()).type_as(x)
+        return output*self.weight
+
+
+
