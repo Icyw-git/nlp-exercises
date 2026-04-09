@@ -52,7 +52,24 @@ class RMSNorm(nn.Module):
         return output*self.weight
 
 
+#构建LLaMA2 attention类
+#尝试使用GQA（分组查询注意力）来实现LLaMA2的注意力机制。GQA是一种优化的注意力机制，旨在提高计算效率和内存使用效率，特别是在处理长序列时。
 
+def repeat_kv(x:torch.Tensor,n_rep:int) -> torch.Tensor:
+    """重复键值张量以适应分组查询注意力机制。
+
+    Args:
+        x (torch.Tensor): 输入的键值张量，形状为 (batch_size, seq_len,n_kv_heads, head_dim)，其中 n_kv_heads 是键值头的数量，head_dim 是每个头的维度。
+        n_rep (int): 重复的次数，即每个键值头的数量。因为分组查询注意力机制中，每个查询头对应多个键值头，所以需要将键值张量重复 n_rep 次。
+        """
+
+    batch_size,seq_len,n_kv_heads,head_dim=x.size()
+
+    if n_rep==1:
+        return x
+
+    #将x的维度调整为 (batch_size, seq_len, n_kv_heads*n_rep, head_dim)，以便进行重复操作
+    return (x.unsqueeze(-2).expand(batch_size,seq_len,n_kv_heads,n_rep,head_dim).reshape(batch_size,seq_len,n_kv_heads*n_rep,head_dim))
 
 
 #测试
@@ -62,3 +79,6 @@ if __name__=='__main__':
     output=norm(input_tensor)
 
     print(output.shape)
+
+    x=torch.randn(1,50,8,16)
+    print(repeat_kv(x,2).shape)
