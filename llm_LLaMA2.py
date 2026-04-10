@@ -1,6 +1,9 @@
 from transformers import PretrainedConfig
 import torch
 import torch.nn as nn
+import math
+import torch.nn.functional as F
+
 
 device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -112,7 +115,7 @@ def reshape_for_broadcast(freqs_cis:torch.Tensor,x:torch.Tensor):
 
 #实现旋转嵌入
 def rotary_emb(xq:torch.Tensor,xk:torch.Tensor,freqs_cos:torch.Tensor,freqs_sin:torch.Tensor) ->tuple[torch.Tensor,torch.Tensor]:
-    #将旋转嵌入应用至q,k矩阵
+    #将旋转嵌入应用至q,k矩阵，使得在进行注意力计算的时候，模型能够利用位置信息来更好地理解序列中元素之间的相对位置关系，从而提高模型的性能。
     #重塑q,k维度，分离实部和虚部
     xq_r,xq_i=xq.float().reshape(xq.shape[:-1]+(-1,2)).unbind(-1) #这里reshape将输入张量xq的最后一个维度调整为2，表示实部和虚部。具体来说，xq.shape[:-1]表示输入张量xq的所有维度，除了最后一个维度。通过在最后一个维度上添加(-1, 2)，我们将最后一个维度调整为2，表示实部和虚部。然后，使用unbind(-1)将这个新的维度分离成两个独立的张量xq_r和xq_i，分别表示实部和虚部。
     xk_r,xk_i=xk.float().reshape(xk.shape[:-1]+(-1,2)).unbind(-1)
@@ -133,6 +136,101 @@ def rotary_emb(xq:torch.Tensor,xk:torch.Tensor,freqs_cos:torch.Tensor,freqs_sin:
     #stack函数将实部和虚部的输出张量沿着最后一个维度进行堆叠，形成一个新的张量，其中实部和虚部被组合在一起。然后，使用flatten(3)将最后两个维度合并成一个维度，以适应后续的计算需求,3表示从第3维开始将后续的维度合并成一个维度。
 
     return xq_out.type_as(xq),xk_out.type_as(xk)
+
+class Attention(nn.Module):
+    def __init__(self,args:ModelConfig):
+        super().__init__()
+        #根据是否指定了n_kv_heads确定键值头的数量
+        self.n_kv_heads=args.n_heads if args.n_kv_heads is None else args.n_kv_heads
+        #确保总头数可以被整除
+        assert args.heads %self.n_kv_heads ==0
+
+        #模型并行处理大小
+        model_parallel_size=1
+
+        #本地计算头数，等于总头数除以模型并行处理大小，本地计算头数是每个设备上实际计算的头数，确保在分布式训练中每个设备上的计算负载均衡
+        self.n_local_heads=args.n_heads // model_parallel_size
+
+        #本地键值头数
+        self.n_local_kv_heads=self.n_kv_heads // model_parallel_size
+
+        #重复次数n_rep，表示每个查询头对应的键值头的数量，计算公式为总头数除以键值头数
+        self.n_rep=self.n_local_heads // self.n_local_kv_heads
+
+        #每个头的维数
+        self.head_dim=args.dim // args.n_heads
+
+
+        #定义权重矩阵
+        self.wq=nn.Linear(args.dim,args.n_heads * self.head_dim,bias=False)
+        self.wk=nn.Linear(args.dim,self.n_kv_heads *self.head_dim,bias=False)  #wk和wv使用分组查询注意力机制，因此它们的输出维度是键值头的数量乘以每个头的维数，而不是总头数乘以每个头的维数。这是因为在分组查询注意力机制中，每个查询头对应多个键值头，所以键值头的数量通常小于总头数。最后通过广播机制共享键值头
+        self.wv=nn.Linear(args.dim,self.n_kv_heads *self.head_dim,bias=False)
+
+        #定义输出矩阵
+        self.wo=nn.Linear(args.n_heads* self.head_dim,args.dim,bias=False)
+
+        #定义dropout
+        self.attn_dropout=nn.Dropout(args.dropout)
+        self.resid_dropout=nn.Dropout(args.dropout)
+
+        #保存dropout概率
+        self.dropout=args.dropout
+
+        #检查是否使用flash attention
+        self.flash=hasattr(torch.nn.functional,'scaled_dot_product_attention') #检查torch.nn.functional模块是否具有scaled_dot_product_attention函数，以确定是否可以使用flash attention。如果存在这个函数，说明当前的PyTorch版本支持flash attention，可以利用这个优化的注意力机制来提高计算效率和内存使用效率，特别是在处理长序列时。
+        if not self.flash:
+            print('当前PyTorch版本不支持flash attention，将使用常规的注意力计算方法。请考虑升级到支持flash attention的版本以获得更好的性能。')
+
+            #创建未来掩码
+            mask=torch.full((1,1,args.max_seq_len,args.max_seq_len),float('-inf'))
+            mask=torch.triu(mask,diagonal=1)
+
+            #注册为缓冲区
+            self.register_buffer('mask',mask)
+
+    def forward(self,x:torch.Tensor,freqs_cos:torch.Tensor,freqs_sin:torch.Tensor):
+
+        batch_size,seq_len,_=x.size()
+
+        #计算q,k,v
+        xq=self.wq(x)
+        xk=self.wk(x)
+        xv=self.wv(x)
+
+        #调整形状
+        xq=xq.view(batch_size,seq_len,self.n_local_heads,self.head_dim) #将最后一个维度分离为两个维度
+
+        xk=xk.view(batch_size,seq_len,self.n_local_kv_heads,self.head_dim)
+        xv=xv.view(batch_size,seq_len,self.n_local_kv_heads,self.head_dim)
+
+        #应用旋转嵌入
+        xq,xk=rotary_emb(xq,xk,freqs_cos,freqs_sin)
+
+        #将k,v进行维度扩展 以适应分组查询注意力机制
+        xk=repeat_kv(xk,self.n_rep)
+        xv=repeat_kv(xv,self.n_rep)
+
+        #将seq_len和头数置换，以适应注意力计算的标准维度
+        xq=xq.transpose(1,2)
+        xk=xk.transpose(1,2)
+        xv=xv.transpose(1,2)
+
+        if self.flash:
+            output=torch.nn.functional.scaled_dot_product_attention(xq,xk,xv,attn_mask=None,dropout_p=self.dropout if self.training else 0)
+
+        else:
+            #手动实现注意力计算
+            scores=torch.matmul(xq,xk.transpose(-2,-1)) /math.sqrt(self.head_dim) #计算注意力分数
+
+            #断言mask存在
+            assert hasattr(self,'mask')
+
+            scores=scores +self.mask[:,:,:seq_len,:seq_len] #与输入长度对齐
+            score=F.softmax(scores.float(),dim=-1).type_as(xq)
+            scores=self.attn_dropout(scores)
+            output=torch.matmul(scores,xv)
+
+
 
 #测试
 if __name__=='__main__':
