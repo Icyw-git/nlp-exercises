@@ -230,6 +230,13 @@ class Attention(nn.Module):
             scores=self.attn_dropout(scores)
             output=torch.matmul(scores,xv)
 
+        output=output.transpose(1,2).contiguous().view(batch_size,seq_len,-1) #将头数和每个头的维数合并回原始的维度，以便进行后续的线性变换和输出。首先，使用transpose(1, 2)将头数维度和序列长度维度交换位置，使得输出张量的形状变为 (batch_size, n_heads, seq_len, head_dim)。然后，使用contiguous()确保张量在内存中是连续的，以便进行后续的view操作。最后，使用view(batch_size, seq_len, -1)将头数维度和每个头的维数合并回原始的维度，使得输出张量的形状变为 (batch_size, seq_len, n_heads * head_dim)，以适应后续的线性变换和输出。
+
+        #投影回输入维度
+        output=self.wo(output)
+        output=self.resid_dropout(output) #在输出上应用残差连接的dropout，以防止过拟合并提高模型的泛化能力。残差连接是一种常见的技术，在深度神经网络中使用，通过将输入直接添加到输出中来帮助缓解梯度消失问题，并促进更深层次的网络训练。通过在残差连接上应用dropout，可以进一步增强模型的鲁棒性和性能。
+        return output
+
 
 
 #测试
