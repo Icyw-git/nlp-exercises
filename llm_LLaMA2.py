@@ -27,13 +27,13 @@ class ModelConfig(PretrainedConfig):
         self.dim=dim
         self.n_layers=n_layers
         self.n_heads=n_heads
-        self.n_kv_heads=n_kv_heads,
-        self.vocab_size=vocab_size,
-        self.hidden_size=hidden_dim,
-        self.multiple_of=multiple_of,
-        self.norm_eps=norm_eps,
-        self.max_seq_len=max_seq_len,
-        self.dropout=dropout,
+        self.n_kv_heads=n_kv_heads
+        self.vocab_size=vocab_size
+        self.hidden_size=hidden_dim
+        self.multiple_of=multiple_of
+        self.norm_eps=norm_eps
+        self.max_seq_len=max_seq_len
+        self.dropout=dropout
         self.flash_attn=flash_attn
         super().__init__(**kwargs) #调用父类的构造函数，传递任何额外的参数（如果有的话），以字典的形式传递给父类的构造函数，以确保父类能够正确地处理这些参数
 
@@ -143,7 +143,7 @@ class Attention(nn.Module):
         #根据是否指定了n_kv_heads确定键值头的数量
         self.n_kv_heads=args.n_heads if args.n_kv_heads is None else args.n_kv_heads
         #确保总头数可以被整除
-        assert args.heads %self.n_kv_heads ==0
+        assert args.n_heads % self.n_kv_heads ==0
 
         #模型并行处理大小
         model_parallel_size=1
@@ -273,3 +273,16 @@ if __name__=='__main__':
     print(xq_out.shape)
     print(xk_out.shape)
     print(xq_out)
+
+#测试Attention类
+    args=ModelConfig()
+    attention_model=Attention(args)
+    batch_size=1
+    seq_len=50
+    dim=args.dim
+    x=torch.randn(batch_size,seq_len,dim)
+
+    freqs_cos,freqs_sin=precompute_freqs_cis(dim//args.n_heads,seq_len)
+    output=attention_model(x,freqs_cos,freqs_sin)
+
+    print(output.shape)
