@@ -238,6 +238,34 @@ class Attention(nn.Module):
         return output
 
 
+class MLP(nn.Module):
+    def __init__(self,dim:int,hidden_dim:int,multiple_of:int,dropout:float):
+        super().__init__()
+
+        #如果没有指定隐藏层的维度，则默认为输入维度的4倍
+        #然后减少至2/3,最后确保它是multiple_of的倍数，multiple_of是一个整数，表示隐藏层维度必须是这个值的倍数。这通常用于确保模型的计算效率和内存使用效率，因为某些硬件架构在处理特定大小的张量时更高效。
+
+        #减少至2/3是为了控制模型的复杂度，防止过拟合，同时确保模型具有足够的表达能力来捕捉输入数据中的复杂模式。通过将隐藏层维度减少到输入维度的2/3，可以在保持模型性能的同时降低计算成本和内存使用。
+        if hidden_dim is None:
+            hidden_dim=dim*4
+            hidden_dim=int(2*hidden_dim/3)
+            hidden_dim=multiple_of*((hidden_dim+multiple_of-1)//multiple_of) #为了确保hidden_dim是multiple_of的倍数，使用了这个公式。首先，将hidden_dim加上multiple_of-1，以确保在除以multiple_of时能够正确地向上取整。然后，使用整数除法将这个值除以multiple_of，得到一个整数，表示hidden_dim需要增加多少个multiple_of才能成为一个倍数。最后，将这个整数乘以multiple_of，得到最终的hidden_dim值，这个值是原始hidden_dim的最小倍数。
+
+        self.w1=nn.Linear(dim,hidden_dim,bias=False)
+        self.w2=nn.Linear(hidden_dim,dim,bias=False)
+        self.w3=nn.Linear(dim,hidden_dim,bias=False)
+
+        self.dropout=nn.Dropout(dropout)
+
+    def forward(self,x):
+
+        #前向传播
+        return self.w2(self.dropout(F.silu(self.w1(x))*self.w3(x))) #在前向传播中，首先通过线性变换w1将输入张量x映射到隐藏层维度，然后应用SILU激活函数（也称为Swish激活函数）来引入非线性。接下来，通过线性变换w3将输入张量x映射到隐藏层维度，并与之前的激活结果进行逐元素乘法操作，以实现门控机制。最后，通过线性变换w2将结果映射回输入维度，并应用dropout以防止过拟合并提高模型的泛化能力。
+
+
+
+
+
 
 #测试
 if __name__=='__main__':
@@ -272,7 +300,7 @@ if __name__=='__main__':
     xq_out,xk_out=rotary_emb(xq,xk,freqs_cos,freqs_sin)
     print(xq_out.shape)
     print(xk_out.shape)
-    print(xq_out)
+    print(xq_out.shape)
 
 #测试Attention类
     args=ModelConfig()
@@ -286,3 +314,13 @@ if __name__=='__main__':
     output=attention_model(x,freqs_cos,freqs_sin)
 
     print(output.shape)
+
+
+#测试MLP类
+    dim=128
+    mlp=MLP(128,None,args.multiple_of,args.dropout)
+    input_tensor=torch.randn(1,50,128)
+    output=mlp(input_tensor)
+    print(output.shape)
+
+
