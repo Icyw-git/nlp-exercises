@@ -3,7 +3,12 @@ import torch
 import torch.nn as nn
 import math
 import torch.nn.functional as F
+from transformers.modeling_outputs import CausalLMOutput, CausalLMOutputWithPast
+from transformers import PreTrainedModel,AutoTokenizer
 
+from dataclasses import dataclass
+from typing import Optional,Any,Tuple
+import inspect
 
 device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -290,6 +295,95 @@ class DecoderLayer(nn.Module):
         return out
 
 
+#构建LLaMA2模型类
+class Transformer(PreTrainedModel):
+    config_class=ModelConfig
+    last_loss: Optional[torch.Tensor] #记录最后一次计算的损失
+
+    def __init__(self,args:ModelConfig=None):
+        super().__init__(args)
+
+        self.args=args
+
+        self.vocab_size=args.vocab_size
+
+        self.n_layers=args.n_layers
+
+        self.tok_embedding=nn.Embedding(args.vocab_size,args.dim)
+
+        self.dropout=nn.Dropout(args.dropout)
+
+        self.layers=torch.nn.ModuleList()
+        for layer_id in range(args.n_layers):
+            self.layers.append(DecoderLayer(layer_id,args))
+
+        self.norm=nn.LayerNorm(args.dim,eps=args.norm_eps)
+
+        self.output=nn.Linear(args.dim,args.vocab_size,bias=False)
+
+
+        self.tok_embedding.weight=self.output.weight
+
+        freqs_cos,freqs_sin=precompute_freqs_cis(args.dim//args.n_heads,args.max_seq_len)
+
+        self.register_buffer('freqs_cos',freqs_cos,persistent=False)
+        self.register_buffer('freqs_sin',freqs_sin,persistent=False)
+
+        self.apply(self._init_weights)
+
+        for pn,p in self.named_parameters():
+            if pn.endswith('w3.weight') or pn.endswith('wo.weight'):
+                torch.nn.init.normal_(p,mean=0,std=0.02/math.sqrt(2*args.n_layers))
+
+        self.last_loss=None
+
+        self.OUT=CausalLMOutputWithPast()
+        self._no_split_modules=[name for name,_ in self.named_modules()]
+
+    def _init_weights(self,module):
+
+        if isinstance(module,nn.Linear):
+            torch.nn.init.normal_(module.weight,mean=0,std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module,nn.Embedding):
+            torch.nn.init.normal_(module.weight,mean=0,std=0.02)
+
+    def forward(self,tokens:torch.Tensor,targets :Optional[torch.Tensor]=None,**kwargs) ->torch.Tensor:
+
+        if 'input_ids' in kwargs:
+            tokens=kwargs['input_ids']
+        if 'labels' in kwargs:
+            targets=kwargs['labels']
+
+        bsz,seqlen=tokens.size()
+
+        h=self.tok_embedding(tokens)
+        h=self.dropout(h)
+
+        freqs_cos=self.freqs_cos[:seqlen]
+        freqs_sin=self.freqs_sin[:seqlen]
+
+        for layer in self.layers:
+            h=layer(h,freqs_cos,freqs_sin)
+        h=self.norm(h)
+
+        if targets is not None:
+            logits=self.output(h)
+            self.last_loss=F.cross_entropy(logits.view(-1,logits.size(-1)),targets.view(-1),ignore_index=0,reduction='none')
+
+        else :
+            logits=self.output(h[:,[-1],:])
+            self.last_loss=None
+
+        self.OUT.__setitem__('logits',logits)
+        self.OUT.__setitem__('last_loss',self.last_loss)
+        return self.OUT
+
+
+
+
+
 
 
 #测试
@@ -360,4 +454,11 @@ if __name__=='__main__':
     print(output.shape)
 
 
-
+#测试Transformer类
+    args=ModelConfig()
+    x=torch.randint(0,6144,(1,50))
+    model=Transformer(args)
+    num_params=sum(p.numel() for p in model.parameters())
+    print(f'模型参数数量: {num_params}')
+    output=model(x)
+    print(output.logits.shape)
