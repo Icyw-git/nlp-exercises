@@ -29,7 +29,7 @@ class ModelConfig(PretrainedConfig):
         self.n_heads=n_heads
         self.n_kv_heads=n_kv_heads
         self.vocab_size=vocab_size
-        self.hidden_size=hidden_dim
+        self.hidden_dim=hidden_dim
         self.multiple_of=multiple_of
         self.norm_eps=norm_eps
         self.max_seq_len=max_seq_len
@@ -264,6 +264,31 @@ class MLP(nn.Module):
 
 
 
+class DecoderLayer(nn.Module):
+    def __init__(self,layer_id:int,args:ModelConfig):
+        super().__init__()
+        self.dim=args.dim
+        self.head_dim=args.dim //args.n_heads #每个注意力头的维度
+        self.attention=Attention(args)
+        self.feed_forward=MLP(
+            dim=self.dim,
+            hidden_dim=args.hidden_dim,
+            multiple_of=args.multiple_of,
+            dropout=args.dropout,
+
+
+        )
+        self.layer_id=layer_id
+        self.attention_norm=RMSNorm(dim=args.dim,eps=args.norm_eps)
+        self.ffn_norm=RMSNorm(dim=args.dim,eps=args.norm_eps)
+
+    def forward(self,x:torch.Tensor,freqs_cos:torch.Tensor,freqs_sin:torch.Tensor):
+
+        #进行前向传播
+        h= x+self.attention(self.attention_norm(x),freqs_cos,freqs_sin)
+        out = h+self.feed_forward(self.ffn_norm(h))
+        return out
+
 
 
 
@@ -322,5 +347,17 @@ if __name__=='__main__':
     input_tensor=torch.randn(1,50,128)
     output=mlp(input_tensor)
     print(output.shape)
+
+#测试DecoderLayer类
+    args=ModelConfig()
+    decoder=DecoderLayer(0,args)
+
+    batch_size=1
+    seq_len=50
+    dim=args.dim
+    x=torch.randn(batch_size,seq_len,dim)
+    output=decoder.forward(x,freqs_cos,freqs_sin)
+    print(output.shape)
+
 
 
