@@ -394,6 +394,35 @@ class Transformer(PreTrainedModel):
 
 
 
+@torch.inference_mode()
+def generate(self,idx,stop_id=None,max_new_tokens=256,temperature=1.0,top_k=None):
+    """
+            给定输入序列 idx（形状为 (bz,seq_len) 的长整型张量），通过多次生成新 token 来完成序列。
+            在 model.eval() 模式下运行。效率较低的采样版本，没有使用键k/v cache。
+            """
+    index=idx.shape[1]
+    for _ in range(max_new_tokens):
+        idx_cond=idx if idx.size(1) <=self.args.max_seq_len else idx[:, -self.args.max_seq_len:]
+
+        logits=self(idx_cond).logits
+        logits=logits[:,-1,:]
+
+        if temperature == 0.0:
+            _,idx_next=torch.topk(logits,k=1,dim=-1)
+        else:
+            logits=logits/temperature
+            if top_k is not None:
+                v,_ =torch.topk(logits,min(top_k,logits.size(-1)))
+                logits[logits<v[:,-1]]=float('-inf')
+            probs=F.softmax(logits,dim=-1)
+            idx_next=torch.multinomial(probs,num_samples=1)
+
+        if idx_next==stop_id:
+            break
+
+        idx=torch.cat((idx,idx_next),dim=1)
+    return idx[:,index:]
+
 
 
 
