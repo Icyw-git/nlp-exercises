@@ -290,7 +290,8 @@ class DecoderLayer(nn.Module):
     def forward(self,x:torch.Tensor,freqs_cos:torch.Tensor,freqs_sin:torch.Tensor):
 
         #进行前向传播
-        h= x+self.attention(self.attention_norm(x),freqs_cos,freqs_sin)
+        h= x+self.attention(self.attention_norm(x),freqs_cos,freqs_sin) #这里使用了pre-norm结构，即在进行注意力计算之前先对输入张量x进行归一化处理。通过将输入张量x传递给attention_norm层进行归一化，可以帮助模型更好地稳定训练过程，并提高模型的性能。
+
         out = h+self.feed_forward(self.ffn_norm(h))
         return out
 
@@ -322,7 +323,7 @@ class Transformer(PreTrainedModel):
         self.output=nn.Linear(args.dim,args.vocab_size,bias=False)
 
 
-        self.tok_embedding.weight=self.output.weight
+        self.tok_embedding.weight=self.output.weight #共享权重，共享权重是一种常见的技术，在语言模型中，输入的词嵌入和输出的词嵌入通常是相同的，因此可以通过将它们的权重矩阵设置为相同来实现权重共享。这不仅可以减少模型的参数数量，还可以提高模型的训练效率和性能，因为输入和输出之间存在强烈的相关性。通过共享权重，模型可以更有效地学习输入和输出之间的关系，从而提高生成文本的质量和准确性。
 
         freqs_cos,freqs_sin=precompute_freqs_cis(args.dim//args.n_heads,args.max_seq_len)
 
@@ -354,6 +355,8 @@ class Transformer(PreTrainedModel):
 
     def forward(self,tokens:torch.Tensor,targets :Optional[torch.Tensor]=None,**kwargs) ->torch.Tensor:
 
+        #kwargs是一个可选的字典参数，可以包含输入张量tokens和目标标签targets。通过使用**kwargs，模型的前向传播函数可以接受任意数量的关键字参数，这些参数可以在函数内部进行处理和使用，以实现更灵活的输入和输出处理方式。
+
         if 'input_ids' in kwargs:
             tokens=kwargs['input_ids']
         if 'labels' in kwargs:
@@ -369,18 +372,23 @@ class Transformer(PreTrainedModel):
 
         for layer in self.layers:
             h=layer(h,freqs_cos,freqs_sin)
-        h=self.norm(h)
+
+        h=self.norm(h) #在所有的解码器层处理完输入张量h之后，使用LayerNorm进行归一化处理，以帮助模型更好地稳定训练过程，并提高模型的性能。通过对输出张量h进行归一化，可以确保每个位置的特征向量具有相似的尺度，从而有助于模型更有效地学习输入数据中的模式和关系。
+
 
         if targets is not None:
             logits=self.output(h)
             self.last_loss=F.cross_entropy(logits.view(-1,logits.size(-1)),targets.view(-1),ignore_index=0,reduction='none')
 
+        #这里对logits进行处理，使用view方法将logits张量的形状调整为 (batch_size * seq_len, vocab_size)，以适应交叉熵损失函数的输入要求。targets张量也被调整为 (batch_size * seq_len) 的形状，以便与logits进行逐元素比较。ignore_index=0表示在计算损失时忽略标签值为0的位置，这通常用于处理填充标记（padding token），因为这些位置不应该对模型的训练产生影响。reduction='none'表示返回每个位置的损失值，而不是对所有位置的损失进行平均或求和，这样可以保留每个位置的损失信息，以便后续分析或使用。
         else :
-            logits=self.output(h[:,[-1],:])
+            logits=self.output(h[:,[-1],:]) #推理时只计算最后一个位置的logits，以提高效率，因为在生成任务中，我们通常只关心当前时间步的输出，而不需要计算整个序列的输出。
+
             self.last_loss=None
 
         self.OUT.__setitem__('logits',logits)
         self.OUT.__setitem__('last_loss',self.last_loss)
+        #设置输出的logits和last_loss属性，以便在模型的前向传播过程中返回这些信息。通过使用__setitem__方法，可以将logits和last_loss存储在OUT对象中，这个对象是CausalLMOutputWithPast类的实例，提供了一个标准化的输出格式，包含生成任务所需的所有信息。
         return self.OUT
 
 
