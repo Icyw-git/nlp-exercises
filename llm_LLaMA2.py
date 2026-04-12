@@ -432,6 +432,13 @@ def generate(self,idx,stop_id=None,max_new_tokens=256,temperature=1.0,top_k=None
 
 
 
+
+
+
+
+
+
+
 #测试
 if __name__=='__main__':
 #测试RMSNorm类
