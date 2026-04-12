@@ -326,19 +326,22 @@ class Transformer(PreTrainedModel):
 
         freqs_cos,freqs_sin=precompute_freqs_cis(args.dim//args.n_heads,args.max_seq_len)
 
-        self.register_buffer('freqs_cos',freqs_cos,persistent=False)
+        self.register_buffer('freqs_cos',freqs_cos,persistent=False) #注册为缓冲区，表示这些张量不需要被优化器更新，但它们是模型的一部分，并且在保存和加载模型时会被包含在内。persistent=False表示这些缓冲区不会被保存到模型的状态字典中
         self.register_buffer('freqs_sin',freqs_sin,persistent=False)
 
-        self.apply(self._init_weights)
+        self.apply(self._init_weights) #参数的初始化，使用apply方法将_init_weights函数应用于模型的所有子模块，以确保所有的权重和偏置都被正确地初始化。这是一个常见的做法，可以帮助模型更快地收敛并提高性能。
 
-        for pn,p in self.named_parameters():
-            if pn.endswith('w3.weight') or pn.endswith('wo.weight'):
+        for pn,p in self.named_parameters(): #遍历模型的所有参数，pn是参数的名称，p是参数的张量。通过named_parameters()方法，可以获取模型中每个参数的名称和对应的张量，以便进行特定的初始化操作。
+            if pn.endswith('w3.weight') or pn.endswith('wo.weight'): #endwith方法检查参数名称是否以指定的字符串结尾，这里检查是否以'w3.weight'或'wo.weight'结尾，以确定是否需要对这些特定的权重参数进行特殊的初始化处理。这里对这两个投影至输入维度的线性层进行特殊的初始化的原因是，这些层在模型中起着关键的作用，直接影响模型的输出和性能。通过对这些层进行特殊的初始化，可以帮助模型更快地收敛并提高性能，特别是在训练初期阶段。
                 torch.nn.init.normal_(p,mean=0,std=0.02/math.sqrt(2*args.n_layers))
 
-        self.last_loss=None
+        self.last_loss=None #最后一次的损失值，初始为None，表示尚未计算过损失。在模型的前向传播过程中，如果提供了目标标签（targets），模型将计算交叉熵损失并将其存储在last_loss属性中，以便后续使用或分析。如果没有提供目标标签，last_loss将保持为None，表示当前没有可用的损失值。
 
-        self.OUT=CausalLMOutputWithPast()
-        self._no_split_modules=[name for name,_ in self.named_modules()]
+
+        self.OUT=CausalLMOutputWithPast() #CausalLMOutputWithPast是一个数据类，这是transformers库中的类，提供标准化的输出格式，包含生成任务所需的所有信息
+
+        self._no_split_modules=[name for name,_ in self.named_modules()] #_no_split_modules是一个列表，包含模型中所有模块的名称。通过named_modules()方法，可以获取模型中每个模块的名称和对应的模块对象。这个列表可以用于指定在模型并行处理或分布式训练过程中不需要进行切分的模块，以确保这些模块在不同设备之间保持完整。
+
 
     def _init_weights(self,module):
 
