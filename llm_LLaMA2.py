@@ -471,7 +471,7 @@ def eval_tokenizer(tokenizer_path: str) -> None:
     print("\n=== 特殊token处理 ===")
     test_text = "<|im_start|>user\nHello<|im_end|>"
     encoded = tokenizer(test_text).input_ids
-    decoded = tokenizer.decode(encoded)
+    decoded = tokenizer.decode(encoded) #在这里，我们将测试文本test_text编码成input_ids，然后再解码回文本。通过比较解码后的文本与原始测试文本，可以验证tokenizer是否正确处理了特殊token（如<|im_start|>和<|im_end|>），并确保这些特殊token在编码和解码过程中得到了正确的保留和处理。这对于模型在处理包含特殊token的输入时能够正确理解和生成文本非常重要。
     print(f"Original: {test_text}")
     print(f"Decoded:  {decoded}")
     print("Special tokens preserved:", decoded == test_text)
