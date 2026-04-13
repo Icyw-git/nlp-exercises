@@ -461,11 +461,13 @@ def eval_tokenizer(tokenizer_path: str) -> None:
     ) #apply_chat_template是transformers库中的一个方法，用于将一系列消息（messages）应用到聊天模板中，并生成一个格式化的提示文本（prompt）。这个方法可以根据消息的角色（如system、user、assistant）和内容，按照预定义的模板规则将它们组合成一个适合模型输入的文本格式。通过设置tokenize=False，可以选择是否对生成的提示文本进行分词处理，如果设置为True，则会返回一个分词后的张量，而不是原始文本。add_generation_prompt参数可以控制是否在生成的提示文本中添加一个特定的生成提示，以引导模型在生成过程中更好地理解上下文和预期输出。
     print("Generated prompt:\n", prompt, sep="")
 
+
     # 测试编码解码
     print("\n=== 编码解码测试 ===")
     encoded = tokenizer(prompt, truncation=True, max_length=256)
     decoded = tokenizer.decode(encoded["input_ids"], skip_special_tokens=False)
     print("Decoded text matches original:", decoded == prompt) #通过比较解码后的文本（decoded）与原始提示文本（prompt），可以验证编码和解码过程是否正确地保留了文本的内容和结构。如果两者完全匹配，说明tokenizer在编码和解码过程中没有丢失信息或引入错误，从而确保了文本处理的准确性和一致性。
+
 
     # 测试特殊token处理
     print("\n=== 特殊token处理 ===")
