@@ -433,7 +433,7 @@ def generate(self,idx,stop_id=None,max_new_tokens=256,temperature=1.0,top_k=None
 def eval_tokenizer(tokenizer_path: str) -> None:
     """评估tokenizer功能"""
     try:
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
+        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path) #AutoTokenizer是transformers库中的一个类，用于自动加载预训练的tokenizer。通过调用from_pretrained方法，并传入tokenizer_path参数，可以从指定的路径加载预训练的tokenizer对象。这个对象包含了用于文本处理和编码的各种功能，如分词、编码、解码等，可以用于后续的文本处理和模型输入准备。
     except Exception as e:
         print(f"Error loading tokenizer: {e}")
         return
@@ -442,7 +442,7 @@ def eval_tokenizer(tokenizer_path: str) -> None:
     print("\n=== Tokenizer基本信息 ===")
     print(f"Vocab size: {len(tokenizer)}")
     print(f"Special tokens: {tokenizer.all_special_tokens}")
-    print(f"Special token IDs: {tokenizer.all_special_ids}")
+    print(f"Special token IDs: {tokenizer.all_special_ids}") #all_special_ids是一个列表，包含了tokenizer中所有特殊token的ID。这些ID对应于特殊token在词汇表中的位置，可以用于在编码和解码过程中正确处理这些特殊token。例如，在语言模型中，特殊token可能包括开始标记（<s>）、结束标记（</s>）、填充标记（<pad>）等，这些标记在生成文本时具有特定的功能和意义。通过查看all_special_ids，可以了解这些特殊token在词汇表中的位置，从而更好地理解和使用tokenizer的功能。
 
     # 测试聊天模板
     messages = [
