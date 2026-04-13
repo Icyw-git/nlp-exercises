@@ -465,7 +465,7 @@ def eval_tokenizer(tokenizer_path: str) -> None:
     print("\n=== 编码解码测试 ===")
     encoded = tokenizer(prompt, truncation=True, max_length=256)
     decoded = tokenizer.decode(encoded["input_ids"], skip_special_tokens=False)
-    print("Decoded text matches original:", decoded == prompt)
+    print("Decoded text matches original:", decoded == prompt) #通过比较解码后的文本（decoded）与原始提示文本（prompt），可以验证编码和解码过程是否正确地保留了文本的内容和结构。如果两者完全匹配，说明tokenizer在编码和解码过程中没有丢失信息或引入错误，从而确保了文本处理的准确性和一致性。
 
     # 测试特殊token处理
     print("\n=== 特殊token处理 ===")
