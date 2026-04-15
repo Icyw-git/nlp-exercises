@@ -21,7 +21,23 @@ def build_chat_prompt(messages):
     return "".join(prompt)
 
 def build_sft_prompt(example):
-    return ''
+    instruction=example.get('instruction')
+    input=example.get('input')
+
+    PROMPT_TEMPLATE=(
+        "指令：{instruction}\n输入：{input}\n回答：\n"
+    )
+
+    if input:
+        prompt=PROMPT_TEMPLATE.format(instruction=instruction, input=input)
+    else:
+        prompt= f"指令：{instruction}\n回答：\n"
+
+    return prompt
+
+
+
+
 
 if __name__ == '__main__':
     example={
@@ -32,5 +48,17 @@ if __name__ == '__main__':
         ]
     }
 
+    example1={
+        'instruction':'What is the capital of France?',
+        'input':''
+    }
+
+    example2={'instruction':'What is the capital of France?','input':'The capital of France is Paris.'}
+
     prompt=build_prompt(example)
     print(prompt)
+
+    prompt1=build_prompt(example1)
+    print(prompt1)
+    prompt2=build_prompt(example2)
+    print(prompt2)
