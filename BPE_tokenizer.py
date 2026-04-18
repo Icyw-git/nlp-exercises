@@ -10,6 +10,9 @@ trainers,
 Tokenizer
 ) # 用于构建和训练BPE分词器
 
+random.seed(42) #设置随机数种子为42，以确保在每次运行代码时生成的随机数序列相同，这对于调试和结果复现非常有用，可以帮助开发者获得一致的结果，特别是在涉及随机性操作的情况下，例如数据分割、模型初始化等。
+
+
 from tokenizers.normalizers import NFKC
 from typing import Generator # 用于类型注解，表示生成器类型
 
