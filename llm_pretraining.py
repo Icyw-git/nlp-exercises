@@ -44,7 +44,9 @@ first_data=dataset[0]
 print(f'输入ID：{first_data["input_ids"]}')
 print(f'标签：{first_data["labels"]}')
 
-dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-
-
+dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
+for batch in dataloader:
+    print(f'批次输入ID：{batch["input_ids"]}')
+    print(f'批次标签：{batch["labels"]}')
+    break
 
