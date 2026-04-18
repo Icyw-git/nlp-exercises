@@ -1,7 +1,10 @@
 import datasets
 import torch
+
 from transformers import AutoTokenizer
 from torch.utils.data import Dataset,DataLoader
+import math
+
 
 # 加载预训练的分词器
 tokenizer=AutoTokenizer.from_pretrained('tokenizer')
@@ -49,4 +52,49 @@ for batch in dataloader:
     print(f'批次输入ID：{batch["input_ids"]}')
     print(f'批次标签：{batch["labels"]}')
     break
+
+
+
+
+
+def get_lr(it,all):
+    #it:当前迭代次数，all:总迭代次数
+
+    warmup_iters=args.warmup_iters
+    lr_decay_iters=all
+    min_lr=args.learning_rate/10
+
+    if it<warmup_iters:
+        return args.learning_rate *it/warmup_iters
+    if it>lr_decay_iters:
+        return min_lr
+
+    decay_ratio=(it-warmup_iters) /(lr_decay_iters-warmup_iters)
+    assert 0<=decay_ratio<=1
+
+    coeff=0.5*(1.0+math.cos(math.pi*decay_ratio))
+    return min_lr+coeff*(args.learning_rate-min_lr)
+
+def train_epoch(epoch):
+
+    start_time=time.time()
+    for step,(X,Y,loss_mask) in enumerate(dataloader):
+        X=X.to(args.device)
+        Y=Y.to(args.device)
+        loss_mask=loss_mask.to(args.device)
+
+        lr=get_lr(epoch*iter_per_epoch+step,args.epochs*iter_per_epoch)
+        for param_group in optimizer.param_groups:
+
+            param_group['lr']=lr
+
+        with ctx:
+            out=model(X,Y)
+            loss =out.last_loss/args.accumulation_steps
+            loss_mask=loss_mask.view(-1)
+            loss=torch.sum(loss*loss_mask)/loss_mask.sum()
+
+        scaler.scale(loss).backward()
+
+
 
