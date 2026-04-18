@@ -1,3 +1,6 @@
+from transformers import AutoTokenizer
+
+
 def build_prompt(example):
     if 'messages' in example:
         return build_chat_prompt(example['messages'])
@@ -38,6 +41,35 @@ def build_sft_prompt(example):
 
 
 
+def encode_prompt(example, tokenizer,max_length):
+    messages=example['messages']
+    prompt=build_prompt(example)
+    prompt_ids=tokenizer.encode(prompt, add_special_tokens=False)
+    answer=messages[-1]['content'] # 将最后一个消息的内容作为监督学习的答案
+    answer_ids=tokenizer.encode(answer, add_special_tokens=False)
+
+    eos_ids=tokenizer.eos_token_id
+    if eos_ids is not None:
+        answer_ids.append(eos_ids)
+
+
+    input_ids=prompt_ids+answer_ids
+
+    if len(input_ids)>max_length:
+        input_ids=input_ids[-max_length:]
+
+    labels=[-100]*len(prompt_ids)+answer_ids
+    labels=labels[-max_length:]
+
+    return input_ids, labels
+
+
+def collate(batch):
+    pass
+
+
+
+
 
 if __name__ == '__main__':
     example={
@@ -62,3 +94,17 @@ if __name__ == '__main__':
     print(prompt1)
     prompt2=build_prompt(example2)
     print(prompt2)
+
+    example3={
+        'messages':[
+            {'role':'system','content':'You are a helpful assistant.'},
+            {'role':'user','content':'What is the capital of France?'},
+            {'role':'assistant','content':'The capital of France is Paris.'}
+        ]
+    }
+
+    tokenizer=AutoTokenizer.from_pretrained('bert-base-chinese')
+    input_ids, labels=encode_prompt(example3, tokenizer, max_length=512)
+    print(input_ids)
+    print(labels)
+
