@@ -9,7 +9,7 @@ import swanlab
 swanlab.login('smj4YZJHedo5rbWoy5DvT')
 
 args=ModelConfig()
-swanlab.init(
+swanlab.init(   #在使用swanlab之前先进行init
     project='my-awesome-project',
     experiment='llm-pretraining-demo',
     tags=['pretraining','transformer'],
@@ -74,7 +74,7 @@ for batch in dataloader:
 
 epochs=3
 args=ModelConfig()
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  #在模型定义的时候不使用这条语句，而是在训练循环中使用，这样可以确保模型和数据都被正确地移动到GPU上（如果可用）。在模型定义时，模型的参数默认是在CPU上创建的，如果直接将模型定义放在GPU上，可能会导致一些问题，例如在某些环境中可能无法正确识别GPU设备，或者在模型定义时就占用GPU资源，导致后续的训练过程出现问题。因此，建议在训练循环中使用这条语句来动态地检测和使用GPU设备，以确保模型和数据都能正确地利用GPU加速训练。
 model=Transformer(args).to(device)
 optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4,betas=(0.9,0.95),weight_decay=0.1)  #betas是Adam优化器的超参数，控制一阶矩估计和二阶矩估计的指数衰减率，weight_decay是权重衰减系数，用于正则化模型，防止过拟合
 
@@ -92,7 +92,7 @@ for epoch in range(epochs):
         loss=outputs.last_loss.mean() #last_loss是模型输出每个位置上的损失值，mean()方法计算这些损失值的平均值，得到一个标量损失值，这个损失值用于反向传播和优化模型参数。
         loss.backward()
         optimizer.step()
-        total_tokens+=labels.numel()
+        total_tokens+=labels.numel()  #token数量通过labels.numel()计算
         total_loss+=loss.item()*labels.numel()
     end=time.time()
 
