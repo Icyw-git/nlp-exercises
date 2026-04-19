@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import Optional,Any,Tuple
 import inspect
 
-device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 class ModelConfig(PretrainedConfig):
@@ -99,7 +98,7 @@ def precompute_freqs_cis(dim:int,end:int,theta:float=10000.0) -> tuple[torch.Ten
     """
 
     freqs=1.0/(theta **(torch.arange(0,dim,2)[:(dim//2)].float() / dim)) #对应的公式为：freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[:, (dim // 2)].float() / dim))，其中torch.arange(0, dim, 2)生成一个从0到dim-1的偶数序列，表示特征向量中实部的索引。[:, (dim // 2)]将这个序列调整为一个列向量，以便后续计算。然后，将这个列向量除以dim，并使用theta作为基数计算频率。
-    t=torch.arange(0,end,device=device) #表示位置索引的序列，从0到end-1，表示需要预计算的旋转嵌入的数量。这个序列将用于计算每个位置的旋转角度。
+    t=torch.arange(0,end) #表示位置索引的序列，从0到end-1，表示需要预计算的旋转嵌入的数量。这个序列将用于计算每个位置的旋转角度。
     freqs=torch.outer(t,freqs).float() #相乘得到一个形状为 (end, dim//2) 的张量，其中每个元素表示位置索引与对应频率的乘积，表示每个位置的旋转角度。
     freqs_cos=torch.cos(freqs)
     freqs_sin=torch.sin(freqs)
