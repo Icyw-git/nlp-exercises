@@ -8,6 +8,19 @@ import time
 import swanlab
 swanlab.login('smj4YZJHedo5rbWoy5DvT')
 
+args=ModelConfig()
+swanlab.init(
+    project='my-awesome-project',
+    experiment='llm-pretraining-demo',
+    tags=['pretraining','transformer'],
+    config={
+        'epochs': 3,
+        'batch_size': 4,
+        'learning_rate': 3e-4,
+        'model_config': args.__dict__  #__dict__属性是Python对象的一个内置属性，它返回一个字典，包含对象的所有属性和它们的值。在这里，args是一个ModelConfig对象，args.__dict__将返回一个字典，其中包含ModelConfig对象的所有配置参数及其对应的值，这些参数将被记录到Swanlab中，以便在实验中进行追踪和分析。
+    }
+)
+
 
 
 
@@ -30,7 +43,7 @@ max_length=512
 
 #去除最后一块多余的部分，保证总长度是max_length的整数倍，这样可以方便后续的分块处理，避免最后一块长度不足的问题
 num_blocks=tokens.numel() // max_length
-tokens=tokens[:, :num_blocks*max_length] #截断多余的部分，使得总长度是max_length的整数倍
+tokens=tokens[:num_blocks*max_length] #截断多余的部分，使得总长度是max_length的整数倍
 chunks=tokens.view(num_blocks,max_length) #将输入ID重新组织成块，每块的长度为max_length，得到一个二维张量，其中每行表示一个块
 
 class Pretraindataset(Dataset):
@@ -71,7 +84,7 @@ for epoch in range(epochs):
     start=time.time()
     for step,batch in enumerate(dataloader):
         optimizer.zero_grad()
-        input_ids=batch['input_ids'][:,-1].to(device) #使用shifted input_ids作为模型的输入，shifted input_ids是将原始输入ID向右移动一个位置得到的，这样模型在训练过程中就可以学习预测下一个标记。具体来说，input_ids[:, :-1]表示去掉每个序列的最后一个标记，而labels=batch['labels'][:, 1:]表示去掉每个序列的第一个标记，这样输入和标签就对齐了，模型可以学习从输入预测标签。
+        input_ids=batch['input_ids'][:,:-1].to(device) #使用shifted input_ids作为模型的输入，shifted input_ids是将原始输入ID向右移动一个位置得到的，这样模型在训练过程中就可以学习预测下一个标记。具体来说，input_ids[:, :-1]表示去掉每个序列的最后一个标记，而labels=batch['labels'][:, 1:]表示去掉每个序列的第一个标记，这样输入和标签就对齐了，模型可以学习从输入预测标签。
         labels=batch['labels'][:,1:].to(device)
 
         outputs=model(input_ids,labels=labels)
@@ -93,15 +106,4 @@ for epoch in range(epochs):
     print(f'Epoch: {epoch}, Loss: {total_loss/total_tokens:.4f}, Time: {end-start:.2f}s, Perplexity: {torch.exp(torch.tensor(total_loss/total_tokens)):.2f}')
 
 
-swanlab.init(
-    project='my-awesome-project',
-    experiment='llm-pretraining-demo',
-    tags=['pretraining','transformer'],
-    config={
-        'epochs': epochs,
-        'batch_size': 4,
-        'learning_rate': 3e-4,
-        'model_config': args.__dict__  #__dict__属性是Python对象的一个内置属性，它返回一个字典，包含对象的所有属性和它们的值。在这里，args是一个ModelConfig对象，args.__dict__将返回一个字典，其中包含ModelConfig对象的所有配置参数及其对应的值，这些参数将被记录到Swanlab中，以便在实验中进行追踪和分析。
-    }
-)
 
