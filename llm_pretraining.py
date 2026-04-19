@@ -4,6 +4,28 @@ import torch
 from transformers import AutoTokenizer
 from torch.utils.data import Dataset,DataLoader
 import math
+import warnings
+import platform
+import argparse
+import pandas as pd
+import torch.optim as optim
+from contextlib import nullcontext
+import os
+import time
+from llm_LLaMA2 import ModelConfig, Transformer
+
+import swanlab
+
+#忽略警告信息
+warnings.fliterwarnings('ignore')
+
+
+def Logger(content):
+    print(content)
+
+
+
+
 
 
 # 加载预训练的分词器
@@ -95,6 +117,59 @@ def train_epoch(epoch):
             loss=torch.sum(loss*loss_mask)/loss_mask.sum()
 
         scaler.scale(loss).backward()
+
+        if(step+1) %args.accumulation_step==0:
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(),args.grad_clip)
+
+            scaler.step(optimizer)
+
+            scaler.update()
+
+            optimizer.zero_grad(set_to_none=True)
+
+        if step %args.log_interval==0:
+            spend_time=time.time()-start_time
+
+            Logger(
+                'Epoch:[{}/{}]({}/{}) loss:{:.3f} lr:{:.7f} epoch time:{}min;'.format(
+                    epoch+1,
+                    args.epochs,
+                    step,
+                    iter_pre_epoch,
+                    loss.item()*args.accumulation_steps,
+                    optimizer,param_groups[-1]['lr'],
+                    spend_time /(step+1)* iter_per_epoch // 60-spend_time //60)
+
+                )
+
+            if args.use_swanlab:
+                swanlab.login('smj4YZJHedo5rbWoy5DvT')
+                swanlab.log(
+                    {
+                        'loss':loss.item()*args.accumulation_steps,
+                        'lr':optimizer.param_groups[-1]['lr']
+                    }
+                )
+
+        if (step+1)%args.save_interval==0:
+            model.eval()
+
+            ckp=f'{args.save_dir}/pretrain_{lm_config.dim}_{lm_config.n_layers}_{lm.config.vocab_size}.pth'
+
+            state_dict=model.state_dict() if isinstance(model,torch.nn.DataParallel) else model.state_dict()
+            torch.save(state_dict,ckp)
+            model.train()
+
+        if(step+1)%20000==0:
+            model.eval()
+
+            ckp=f'{args.save_dir}/pretrain_{lm_config.dim}_{lm_config.n_layers}_{lm.config.vocab_size}_step{step+1}.pth'
+
+            state_dict=model.module.state_dict() if isinstance(model,torch.nn.DataParallel) else model.state_dict()
+            torch.save(state_dict,ckp)
+            model.train()
+
 
 
 
