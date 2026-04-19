@@ -103,7 +103,10 @@ for epoch in range(epochs):
         'training_time': end - start
     })
 
-    print(f'Epoch: {epoch}, Loss: {total_loss/total_tokens:.4f}, Time: {end-start:.2f}s, Perplexity: {torch.exp(torch.tensor(total_loss/total_tokens)):.2f}')
+
+print("num_blocks:", num_blocks)
+print("tokens:", tokens.numel())
+print("steps_per_epoch:", len(dataloader))
 
 
-
+print(tokenizer.decode([0]))
