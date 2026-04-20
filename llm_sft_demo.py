@@ -82,7 +82,9 @@ swanlab.init(
     config={
         'epochs': 4,
         'batch_size': 4,
-        'learning_rate': 3e-4,}
+        'learning_rate': 3e-4,
+        'model_config':args.__dict__
+    }
 )
 
 device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')

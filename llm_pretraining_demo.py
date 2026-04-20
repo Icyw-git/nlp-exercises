@@ -2,17 +2,18 @@ from transformers import AutoTokenizer
 import datasets
 from torch.utils.data import Dataset,DataLoader
 from llm_LLaMA2 import ModelConfig, Transformer
-import torch.nn.functional as F
 import torch
 import time
 import swanlab
 from dotenv import load_dotenv
 import os
+
+#从环境中加载swanlab的密钥，并登录swanlab平台，以便在后续的训练过程中记录和追踪实验数据。
 load_dotenv()
 api_key = os.getenv("SWANLAB_API_KEY")
 swanlab.login(api_key)
 
-args=ModelConfig()
+args=ModelConfig() #创建modelconfig对象，包含模型的配置参数，例如层数、隐藏维度、注意力头数等，这些参数将用于定义和训练Transformer模型。
 swanlab.init(   #在使用swanlab之前先进行init
     project='my-awesome-project',
     experiment='llm-pretraining-demo',
@@ -71,7 +72,7 @@ print(f'输入ID：{first_data["input_ids"]}')
 print(f'标签：{first_data["labels"]}')
 
 dataloader = DataLoader(dataset, batch_size=4, shuffle=True)
-for batch in dataloader:
+for batch in dataloader:  #这里的batch包含input_ids和labels两个键，分别对应输入ID和标签。通过迭代dataloader，我们可以获取每个批次的数据，并在训练循环中使用这些数据进行模型的训练。
     print(f'批次输入ID：{batch["input_ids"]}')
     print(f'批次标签：{batch["labels"]}')
     break
