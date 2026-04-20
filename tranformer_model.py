@@ -300,7 +300,7 @@ class Transformer(nn.Module):
             #训练阶段，需要计算损失，targets的维度是(batch,seq)，而logits的维度是(batch,seq,vocab_size)，所以需要将logits和targets都展平为(batch*seq,vocab_size)和(batch*seq)，才能计算交叉熵损失
             #如果给了target就计算loss
             logits=self.lm_head(x) #通过线性层得到词表大小的输出
-            loss =F.cross_entropy(logits.view(-1,logits.size(-1)),targets.view(-1))
+            loss =F.cross_entropy(logits.reshape(-1,logits.size(-1)),targets.reshape(-1))
 
         else:
             #推理阶段，只需要最后一个位置的logits，因为在生成文本时，每次只生成一个token，所以只需要最后一个位置的输出即可

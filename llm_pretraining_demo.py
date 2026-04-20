@@ -6,7 +6,11 @@ import torch.nn.functional as F
 import torch
 import time
 import swanlab
-swanlab.login('smj4YZJHedo5rbWoy5DvT')
+from dotenv import load_dotenv
+import os
+load_dotenv()
+api_key = os.getenv("SWANLAB_API_KEY")
+swanlab.login(api_key)
 
 args=ModelConfig()
 swanlab.init(   #在使用swanlab之前先进行init

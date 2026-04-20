@@ -377,7 +377,7 @@ class Transformer(PreTrainedModel):
 
         if targets is not None:
             logits=self.output(h)
-            self.last_loss=F.cross_entropy(logits.view(-1,logits.size(-1)),targets.view(-1),ignore_index=0,reduction='none')
+            self.last_loss=F.cross_entropy(logits.reshape(-1,logits.size(-1)),targets.reshape(-1),ignore_index=-100,reduction='none')
 
         #这里对logits进行处理，使用view方法将logits张量的形状调整为 (batch_size * seq_len, vocab_size)，以适应交叉熵损失函数的输入要求。targets张量也被调整为 (batch_size * seq_len) 的形状，以便与logits进行逐元素比较。ignore_index=0表示在计算损失时忽略标签值为0的位置，这通常用于处理填充标记（padding token），因为这些位置不应该对模型的训练产生影响。reduction='none'表示返回每个位置的损失值，而不是对所有位置的损失进行平均或求和，这样可以保留每个位置的损失信息，以便后续分析或使用。
         else :
