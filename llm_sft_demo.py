@@ -22,7 +22,7 @@ class SFTDataset(Dataset):
         self.tokenizer=tokenizer
         self.max_length=max_length
         with open(self.path,'r',encoding='utf-8') as f:
-            self.data=json.load(f)
+            self.data=json.load(f) #json.load和json.loads的区别在于前者用于从文件中读取JSON数据并解析成Python对象，而后者用于从字符串中解析JSON数据。这里使用json.load是因为数据存储在一个JSON文件中，需要从文件中读取并解析成Python对象，以便后续的数据处理和模型训练。
 
     def __len__(self):
         return len(self.data)
@@ -36,7 +36,8 @@ class SFTDataset(Dataset):
         prompt=f'###User:\n{instruction}\n{input}\n\n###Assistant:\n{output}\n'  #拼接成prompt字段，包含用户的指令、输入和助手的回答，这样可以为模型提供足够的上下文信息，以便进行监督学习微调。使用特定的格式（例如###User:和###Assistant:）可以帮助模型更好地理解不同角色之间的关系，从而提高生成回答的质量。
         answer=output
 
-        prompt_ids=self.tokenizer.encode(prompt,add_special_tokens=False) #解码成ids
+        prompt_ids=self.tokenizer.encode(prompt,add_special_tokens=False) #解码成ids，返回的数据类型是List,和tokenizer方法的区别是tokenizer方法返回一个字典，包含输入ID、注意力掩码等信息，返回的是tensor类型。
+
         answer_ids=self.tokenizer.encode(answer,add_special_tokens=False)
 
         if self.tokenizer.eos_token_id is not None:
@@ -46,7 +47,7 @@ class SFTDataset(Dataset):
         if len(input_ids)>self.max_length:
             input_ids=input_ids[-self.max_length:] #若超过最大序列长度，就截断输出id，保留最后的max_length个标记，这样可以确保输入序列的长度不会超过模型的最大处理能力，同时保留了最相关的上下文信息。
 
-        labels=[-100]*len(prompt_ids)+answer_ids
+        labels=[-100]*len(prompt_ids)+answer_ids #-100是特殊的标签值，表示这些位置的标记在计算损失时应该被忽略，这样模型在训练过程中只会关注答案部分的标记，而不会受到提示部分的影响，从而更有效地进行监督学习微调。
         if len(labels)>self.max_length:
             labels=labels[-self.max_length:]
 
@@ -59,7 +60,7 @@ dataset=SFTDataset('./data/alpaca_data_cleaned.json',tokenizer,256)
 
 
 def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):  #用于将__getitem__获得的一个样本整合成一个批次的数据
-    max_len=max(x['input_ids'].numel() for x in batch)
+    max_len=max(x['input_ids'].numel() for x in batch)  #batch包含了一个批次的样本数据
     input_ids=[]
     labels=[]
     for x in batch:
@@ -104,7 +105,7 @@ for epoch in range(epochs):
 
         outputs=model(input_ids,labels=labels)
 
-        loss=outputs.last_loss.mean()
+        loss=outputs.last_loss.mean() #模型输出的last_loss是一个张量，包含了每个位置的损失值
         loss.backward()
         optimizer.step()
 
