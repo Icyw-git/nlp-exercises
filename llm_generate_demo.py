@@ -6,7 +6,7 @@ from llm_LLaMA2 import ModelConfig,Transformer
 
 
 @torch.inference_mode() #推理模式,禁用梯度计算。
-def generate_eos(inputs,check_point_path:str,tokenizer,temperature:float,top_k:int,max_length:int=256):
+def generate_eos(inputs:str,check_point_path:str,tokenizer,temperature:float,top_k:int,max_length:int=256):
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args=ModelConfig()
     model=Transformer(args)
@@ -15,12 +15,12 @@ def generate_eos(inputs,check_point_path:str,tokenizer,temperature:float,top_k:i
     model.eval()
 
     prompt=f"###User:\n{inputs}\n\n###Assistant:\n"
-    input_ids=tokenizer(prompt,return_tensors='pt',add_special_tokens=False)['input_ids'].to(device)
+    input_ids=tokenizer(prompt,return_tensors='pt',add_special_tokens=False)['input_ids'].to(device) #add_special_tokens=False表示在编码时不添加特殊标记，例如开始标记、结束标记等，这样可以确保输入ID只包含用户输入的内容，而不包含任何额外的特殊标记，这对于生成任务来说是有意义的，因为我们希望模型根据用户输入生成回答，而不是受到特殊标记的干扰。
 
 
 
     if input_ids.numel() > max_length:
-        input_ids = input_ids[:,-max_length:]
+        input_ids = input_ids[:,-max_length:] #截断
 
     for _ in range(max_length):
         outputs=model(input_ids)
@@ -41,7 +41,7 @@ def generate_eos(inputs,check_point_path:str,tokenizer,temperature:float,top_k:i
         if idx.item()==tokenizer.eos_token_id:
             break
 
-    return tokenizer.decode(input_ids,skip_special_tokens=True) #返回生成的文本
+    return tokenizer.decode(input_ids,skip_special_tokens=True) #返回生成的文本，skip_special_tokens=True表示在解码时跳过特殊标记，例如<|im_start|>、<|im_end|>等，这样可以得到更干净的生成文本，避免包含不必要的特殊标记。
 
 
 
