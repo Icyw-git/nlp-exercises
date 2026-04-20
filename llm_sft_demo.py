@@ -116,3 +116,7 @@ for epoch in range(epochs):
         'epoch_time': epoch_time
     })
     print(f'Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}, Time: {epoch_time:.2f} seconds')
+
+
+swanlab.finish()
+print('训练完成！')

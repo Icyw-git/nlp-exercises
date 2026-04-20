@@ -107,6 +107,8 @@ for epoch in range(epochs):
         'training_time': end - start
     })
 
+swanlab.finish()
+print('训练完成！')
 
 print("num_blocks:", num_blocks)
 print("tokens:", tokens.numel())
