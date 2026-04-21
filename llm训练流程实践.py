@@ -16,3 +16,18 @@ from transformers import AutoTokenizer
 tokenizer=AutoTokenizer.from_pretrained(model_path) #加载模型分词器
 
 print(tokenizer.eos_token_id)
+
+data_path='./data/input.txt'
+with open(data_path,'r',encoding='utf-8') as f:
+    text=f.read()
+
+input_ids=tokenizer(text,return_tensors='pt')['input_ids'][0]
+print(input_ids.shape)
+
+max_length=512
+
+num_chunks=input_ids.shape[0] // max_length
+
+input_ids=input_ids[:num_chunks*max_length]
+chunks=input_ids.reshape(num_chunks,max_length)
+print(chunks.shape)
