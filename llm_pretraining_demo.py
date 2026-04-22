@@ -157,8 +157,8 @@ for epoch in range(epochs):
         if step % 100 ==0:  #每100步保存一次模型的检查点，checkpoint是模型训练过程中的一个快照，包含了模型的当前状态、优化器的状态、当前的训练轮数和步数，以及随机数生成器的状态等信息，这些信息可以用于在训练过程中断后恢复训练，或者在训练完成后进行模型评估和推理。
             torch.save(
                 {
-                    'model_state': model.state_dict(),
-                    'optimizer_state': optimizer.state_dict(),
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
                     'epoch': epoch,
                     'step': step,
                     'rng_state':torch.get_rng_state(),
@@ -171,7 +171,7 @@ for epoch in range(epochs):
     val_loss=eval_on_valid_set(model,valid_loader)
     swanlab.log({
         'valid_loss': val_loss,
-        'ppl': torch.exp(val_loss).item()
+        'ppl': torch.exp(torch.tensor(val_loss)).item()
     })
 
     if val_loss < best_loss:

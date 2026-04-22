@@ -10,11 +10,13 @@ from llm_LLaMA2 import ModelConfig,Transformer
 
 
 @torch.inference_mode() #推理模式,禁用梯度计算。
-def generate_eos(inputs:str, check_point_path:str, tokenizer, temperature:float, top_k:int, top_p: Optional[float], repetition_penality:float=1.0,max_length:int=256):  #check_point_path是模型权重的路径
+def generate_eos(inputs:str, check_point_path:str, tokenizer, temperature:float, top_k:Optional[int]=None, top_p: Optional[float]=None, repetition_penality:float=1.0,max_length:int=256):  #check_point_path是模型权重的路径
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     args=ModelConfig() #初始化模型配置参数
     model=Transformer(args)
-    model.load_state_dict(torch.load(check_point_path,map_location='cpu')) #加载模型权重，map_location='cpu'表示将模型权重加载到CPU上，这样可以确保在没有GPU的环境中也能正确加载模型权重，避免出现设备不兼容的问题。
+    checkpoint=torch.load(check_point_path, map_location=device)
+
+    model.load_state_dict(checkpoint['model_state_dict']) #加载模型权重，map_location='cpu'表示将模型权重加载到CPU上，这样可以确保在没有GPU的环境中也能正确加载模型权重，避免出现设备不兼容的问题。
     model.to(device)
     model.eval()
 
@@ -75,7 +77,7 @@ def generate_eos(inputs:str, check_point_path:str, tokenizer, temperature:float,
 
 
     #只返回包含assistant回答的部分，去掉prompt部分
-    out= tokenizer.decode(input_ids,skip_special_tokens=True) #返回生成的文本，skip_special_tokens=True表示在解码时跳过特殊标记，例如<|im_start|>、<|im_end|>等，这样可以得到更干净的生成文本，避免包含不必要的特殊标记。
+    out= tokenizer.decode(input_ids,skip_special_tokens=True) #返回生成的文本，skip_special_tokens=True表示在解码时跳过特殊标记，例如<|im_start|>、<|im_end|>等. 注意返回的类型是List类型
     out=out.split('###Assistant:\n',1)[-1].strip() #从生成的文本中提取出助手的回答部分，split('###Assistant:\n',1)将生成的文本按照'###Assistant:\n'进行分割，得到一个列表，[-1]表示获取分割后的最后一个元素，即助手的回答部分，strip()方法用于去除回答部分的前后空白字符，确保输出的文本干净整洁。
     return out
 
@@ -85,7 +87,7 @@ def generate_eos(inputs:str, check_point_path:str, tokenizer, temperature:float,
 if __name__=='__main__':
     tokenizer = AutoTokenizer.from_pretrained('tokenizer')
 
-    generate_eos('今天天气怎么样？','check_point_path',tokenizer,temperature=0.7,top_k=50,repetition_penality=1.2,max_length=256)
+    generate_eos('今天天气怎么样？','./checkpoint/checkpoint_s11000_e3.pth',tokenizer,temperature=0.7,top_k=50,repetition_penality=1.2,max_length=256)
 
 
 
