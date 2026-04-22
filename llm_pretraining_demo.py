@@ -2,7 +2,6 @@
 
 
 from transformers import AutoTokenizer
-import datasets
 from torch.utils.data import Dataset,DataLoader
 from llm_LLaMA2 import ModelConfig, Transformer
 import torch
@@ -164,7 +163,7 @@ for epoch in range(epochs):
                     'step': step,
                     'rng_state':torch.get_rng_state(),
 
-                },f'checkpoint_{step}.pth'
+                },f'checkpoint_s{step}_e{epoch}.pth'
             )
 
     end = time.time()
