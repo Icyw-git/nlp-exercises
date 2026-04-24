@@ -64,12 +64,13 @@ class SFTDataset(Dataset):
             answer_ids.append(self.tokenizer.eos_token_id) #选择是否添加结束标记，如果分词器定义了结束标记（eos_token_id），则将其添加到答案ID的末尾，以便模型在生成回答时知道何时停止生成。
 
         input_ids=prompt_ids+answer_ids
-        if len(input_ids)>self.max_length:
-            input_ids=input_ids[-self.max_length:] #若超过最大序列长度，就截断输出id，保留最后的max_length个标记，这样可以确保输入序列的长度不会超过模型的最大处理能力，同时保留了最相关的上下文信息。
+        labels=[-100]*len(prompt_ids)+answer_ids #构建标签，使用-100来标记不需要计算损失的位置，这样模型在计算损失时只会关注答案部分，而不会受到提示部分的影响。
 
-        labels=[-100]*len(prompt_ids)+answer_ids #-100是特殊的标签值，表示这些位置的标记在计算损失时应该被忽略，这样模型在训练过程中只会关注答案部分的标记，而不会受到提示部分的影响，从而更有效地进行监督学习微调。
-        if len(labels)>self.max_length:
-            labels=labels[-self.max_length:]
+
+        input_ids=input_ids[:self.max_length]
+        labels=labels[:self.max_length]
+        assert len(input_ids)==len(labels)
+
 
         return {
             'input_ids': torch.tensor(input_ids,dtype=torch.long),

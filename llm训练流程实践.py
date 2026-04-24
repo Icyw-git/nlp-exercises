@@ -19,7 +19,7 @@ lora_config=LoraConfig(
     r=8,
     lora_alpha=16,
     lora_dropout=0.05,
-    target_modules=['q_proj','k_proj'],
+    target_modules=['q_proj','k_proj','v_proj','o_proj'],
     bias='none'
 )
 
@@ -90,11 +90,10 @@ class SFTDataset(Dataset):
         input_ids=prompt_ids+answer
 
         labels=[-100]*len(prompt_ids)+answer
-        if len(labels)>self.max_length:
-            labels=labels[-self.max_length:]
 
-        if len(input_ids)>self.max_length:
-            input_ids=input_ids[-self.max_length:]
+        input_ids=input_ids[:self.max_length]
+        labels=labels[:self.max_length]
+        assert len(input_ids)==len(labels)
 
         return {
             'input_ids': torch.tensor(input_ids,dtype=torch.long),
@@ -128,14 +127,32 @@ def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):
 
 
 
-train_dataloader=DataLoader(train_dataset,batch_size=4,shuffle=True,collate_fn=collate_fn)
-val_dataloader=DataLoader(val_dataset,batch_size=4,shuffle=False,collate_fn=collate_fn)
+train_dataloader=DataLoader(train_dataset,batch_size=2,shuffle=True,collate_fn=collate_fn)
+val_dataloader=DataLoader(val_dataset,batch_size=2,shuffle=False,collate_fn=collate_fn)
 
+for batch in train_dataloader:
+    print(batch)
+    break
 
 device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4)
 model=get_peft_model(model,lora_config)
+optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4)
+
+model.train()
 model.print_trainable_parameters()
+
+batch = next(iter(train_dataloader))
+for k in batch:
+    batch[k] = batch[k].to(model.device)
+model.train()
+out = model(input_ids=batch["input_ids"], labels=batch["labels"])
+print("loss:", out.loss)
+out.loss.backward()
+
+for n, p in model.named_parameters():
+    if p.requires_grad:
+        grad_norm = p.grad.norm().item() if p.grad is not None else None
+        print(f"{n}: grad_norm={grad_norm}")
 
 
 
