@@ -5,6 +5,12 @@ import json
 from torch.utils.data import Dataset,DataLoader
 import torch
 from transformers import TrainingArguments,Trainer
+import swanlab
+from dotenv import load_dotenv
+
+load_dotenv()
+api_key=os.getenv("SWANLAB_API_KEY")
+swanlab.login(api_key)
 
 
 from peft import LoraConfig,get_peft_model,TaskType
@@ -140,6 +146,7 @@ training_args=TrainingArguments(
     save_steps=500,
     output_dir='./models/qwen2.5-lora',
     fp16=True,
+    report_to=['swanlab']
 )
 
 
