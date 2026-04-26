@@ -107,7 +107,7 @@ val_dataset=SFTDataset(val_data,tokenizer,max_length=512)
 
 
 def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):
-    max_len=max(x['input_ids'].numel() for x in batch)
+    max_len=max(x['input_ids'].numel() for x in batch) #统计每个批次中的最长输入长度，以便进行动态填充
     input_ids=[]
     labels=[]
 
@@ -115,7 +115,7 @@ def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):
         ids=x['input_ids']
         labs=x['labels']
         pad_len=max_len-len(ids)
-        ids=torch.cat([ids,torch.full((pad_len,),pad_id,dtype=torch.long)])
+        ids=torch.cat([ids,torch.full((pad_len,),pad_id,dtype=torch.long)]) #将输入ID进行填充，使用pad_id来填充输入ID，使得每个批次中的输入ID长度相同，这样可以方便地将它们堆叠成一个张量进行模型训练。
         labs=torch.cat([labs,torch.full((pad_len,),label_pad_id,dtype=torch.long)])
         input_ids.append(ids)
         labels.append(labs)
