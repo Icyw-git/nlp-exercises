@@ -106,6 +106,7 @@ val_dataset=SFTDataset(val_data,tokenizer,max_length=512)
 
 
 
+
 def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):
     max_len=max(x['input_ids'].numel() for x in batch) #统计每个批次中的最长输入长度，以便进行动态填充
     input_ids=[]
@@ -163,7 +164,9 @@ training_args=TrainingArguments(
     save_steps=500,
     output_dir='./models/qwen2.5-lora',
     fp16=True, #启用混合精度训练，这可以加速训练过程并减少显存使用，特别是在使用GPU进行训练时，fp16可以提高计算效率，同时保持模型的性能。
-    report_to=['swanlab']
+    report_to=['swanlab'],
+    eval_strategy='steps', #评估策略，指定在训练过程中何时进行评估，这里设置为'steps'表示每隔一定的训练步骤进行一次评估，评估的频率可以通过eval_steps参数来控制，这样可以帮助我们监控模型在验证集上的性能，并及时调整训练过程中的超参数或模型结构，以获得更好的性能。
+    eval_steps=500, #每隔500步进行一次评估操作，使用的是默认的评估指标，这些指标可以帮助我们监控模型在验证集上的性能，并及时调整训练过程中的超参数或模型结构，以获得更好的性能。
 )
 
 
