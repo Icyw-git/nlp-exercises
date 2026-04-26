@@ -135,8 +135,8 @@ for batch in train_dataloader:
     break
 
 device= torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model=get_peft_model(model,lora_config)
-optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4)
+model=get_peft_model(model,lora_config) #使用peft库中的get_peft_model函数将原始模型转换为支持LoRA微调的模型，lora_config参数包含了LoRA微调的配置，例如任务类型、秩、alpha值、dropout率等，这些配置将指导模型在训练过程中如何应用LoRA微调技术，从而提高训练效率和性能。
+optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4)# optimizer要在模型转换为LoRA模型之后定义，因为get_peft_model函数会修改模型的参数结构，如果在转换之前定义优化器，可能会导致优化器无法正确地识别和更新模型的参数，从而影响训练过程。因此，建议在调用get_peft_model函数之后再定义优化器，以确保优化器能够正确地识别和更新模型的参数。
 
 model.train()
 model.print_trainable_parameters()
@@ -159,7 +159,7 @@ for n, p in model.named_parameters():
 training_args=TrainingArguments(
     per_device_train_batch_size=2,
     num_train_epochs=3,
-    logging_steps=50,
+    logging_steps=50, #
     save_steps=500,
     output_dir='./models/qwen2.5-lora',
     fp16=True,
