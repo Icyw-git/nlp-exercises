@@ -15,11 +15,11 @@ swanlab.login(api_key)
 
 from peft import LoraConfig,get_peft_model,TaskType
 lora_config=LoraConfig(
-    task_type=TaskType.CAUSAL_LM,
-    r=8,
-    lora_alpha=16,
-    lora_dropout=0.05,
-    target_modules=['q_proj','k_proj','v_proj','o_proj'],
+    task_type=TaskType.CAUSAL_LM, #指定任务类型
+    r=8, #秩，表示LoRA微调中低秩矩阵的秩，较小的r值可以减少模型参数的数量，从而降低训练和推理的计算成本，但可能会影响模型的性能。选择合适的r值需要根据具体任务和模型进行实验和调整，以找到性能和效率之间的最佳平衡点。
+    lora_alpha=16, #alpha值，表示LoRA微调中低秩矩阵的缩放因子，较大的lora_alpha值可以增加模型的表达能力，从而提高性能，但也可能增加训练和推理的计算成本。选择合适的lora_alpha值需要根据具体任务和模型进行实验和调整，以找到性能和效率之间的最佳平衡点。
+    lora_dropout=0.05, #dropout率，表示在LoRA微调过程中应用的dropout率，较高的dropout率可以增加模型的鲁棒性和泛化能力，但也可能导致训练过程中的不稳定性。选择合适的lora_dropout值需要根据具体任务和模型进行实验和调整，以找到性能和稳定性之间的最佳平衡点。
+    target_modules=['q_proj','k_proj','v_proj','o_proj'], #指定要应用LoRA微调的目标模块，这些模块通常是Transformer模型中的线性层，例如查询、键、值和输出投影层。通过指定这些模块，LoRA微调将只针对这些特定的层进行参数调整，从而提高训练效率和性能。选择合适的target_modules需要根据具体任务和模型结构进行实验和调整，以找到最佳的微调效果。
     bias='none'
 )
 
