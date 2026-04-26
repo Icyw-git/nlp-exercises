@@ -159,10 +159,10 @@ for n, p in model.named_parameters():
 training_args=TrainingArguments(
     per_device_train_batch_size=2,
     num_train_epochs=3,
-    logging_steps=50, #
+    logging_steps=50, #每隔多少步记录一次日志，这些日志可以包括训练损失、评估指标等信息，帮助我们监控训练过程中的模型性能和收敛情况。
     save_steps=500,
     output_dir='./models/qwen2.5-lora',
-    fp16=True,
+    fp16=True, #启用混合精度训练，这可以加速训练过程并减少显存使用，特别是在使用GPU进行训练时，fp16可以提高计算效率，同时保持模型的性能。
     report_to=['swanlab']
 )
 
