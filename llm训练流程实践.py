@@ -91,7 +91,7 @@ class SFTDataset(Dataset):
 
         labels=[-100]*len(prompt_ids)+answer
 
-        input_ids=input_ids[:self.max_length]
+        input_ids=input_ids[:self.max_length] #这里采用的是前截断的方式，如果输入文本超过了最大长度，就保留输入文本的最后部分，这样可以确保模型能够看到输入文本的结尾部分，这对于生成回答可能更有帮助，因为输入文本的结尾部分通常包含了最相关的信息。
         labels=labels[:self.max_length]
         assert len(input_ids)==len(labels)
 
