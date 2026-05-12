@@ -180,6 +180,7 @@ trainer=Trainer(
     tokenizer=tokenizer,
 )
 
+#Todo:lora训练流程优化
 
 
 trainer.train()
