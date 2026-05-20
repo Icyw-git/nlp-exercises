@@ -17,6 +17,9 @@ random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  #在模型定义的时候不使用这条语句，而是在训练循环中使用，这样可以确保模型和数据都被正确地移动到GPU上（如果可用）。在模型定义时，模型的参数默认是在CPU上创建的，如果直接将模型定义放在GPU上，可能会导致一些问题，例如在某些环境中可能无法正确识别GPU设备，或者在模型定义时就占用GPU资源，导致后续的训练过程出现问题。因此，建议在训练循环中使用这条语句来动态地检测和使用GPU设备，以确保模型和数据都能正确地利用GPU加速训练。
+
+
 
 #从环境中加载swanlab的密钥，并登录swanlab平台，以便在后续的训练过程中记录和追踪实验数据。
 load_dotenv()
@@ -124,7 +127,6 @@ def eval_on_valid_set(model,valid_loader):
 
 epochs=3
 args=ModelConfig()
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')  #在模型定义的时候不使用这条语句，而是在训练循环中使用，这样可以确保模型和数据都被正确地移动到GPU上（如果可用）。在模型定义时，模型的参数默认是在CPU上创建的，如果直接将模型定义放在GPU上，可能会导致一些问题，例如在某些环境中可能无法正确识别GPU设备，或者在模型定义时就占用GPU资源，导致后续的训练过程出现问题。因此，建议在训练循环中使用这条语句来动态地检测和使用GPU设备，以确保模型和数据都能正确地利用GPU加速训练。
 model=Transformer(args).to(device)
 optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4,betas=(0.9,0.95),weight_decay=0.1)  #betas是Adam优化器的超参数，控制一阶矩估计和二阶矩估计的指数衰减率，weight_decay是权重衰减系数，用于正则化模型，防止过拟合
 

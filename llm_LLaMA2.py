@@ -338,7 +338,6 @@ class Transformer(PreTrainedModel):
         self.last_loss=None #最后一次的损失值，初始为None，表示尚未计算过损失。在模型的前向传播过程中，如果提供了目标标签（targets），模型将计算交叉熵损失并将其存储在last_loss属性中，以便后续使用或分析。如果没有提供目标标签，last_loss将保持为None，表示当前没有可用的损失值。
 
 
-        self.OUT=CausalLMOutputWithPast() #CausalLMOutputWithPast是一个数据类，这是transformers库中的类，提供标准化的输出格式，包含生成任务所需的所有信息
 
         self._no_split_modules=[name for name,_ in self.named_modules()] #_no_split_modules是一个列表，包含模型中所有模块的名称。通过named_modules()方法，可以获取模型中每个模块的名称和对应的模块对象。这个列表可以用于指定在模型并行处理或分布式训练过程中不需要进行切分的模块，以确保这些模块在不同设备之间保持完整。
 
@@ -385,48 +384,47 @@ class Transformer(PreTrainedModel):
 
             self.last_loss=None
 
-        self.OUT.__setitem__('logits',logits)
-        self.OUT.__setitem__('last_loss',self.last_loss)
+        
         #设置输出的logits和last_loss属性，以便在模型的前向传播过程中返回这些信息。通过使用__setitem__方法，可以将logits和last_loss存储在OUT对象中，这个对象是CausalLMOutputWithPast类的实例，提供了一个标准化的输出格式，包含生成任务所需的所有信息。
-        return self.OUT
+        return CausalLMOutputWithPast(logits=logits,loss=self.last_loss)
 
 
 
 
-@torch.inference_mode()
-#这是一个装饰器，表示在这个函数中不需要计算梯度，这对于推理阶段非常有用，可以节省内存和计算资源，提高推理效率。通过使用@torch.inference_mode()装饰器，模型在执行generate函数时将不会计算梯度，从而加快生成过程并减少内存使用。和torch.no_grad()类似，@torch.inference_mode()还会禁用某些特定于训练的功能，如dropout和batch normalization，以确保在推理阶段模型的行为与训练阶段一致，从而提高生成文本的质量和准确性。
-def generate(self,idx,stop_id=None,max_new_tokens=256,temperature=1.0,top_k=None):
-    """
-            给定输入序列 idx（形状为 (bz,seq_len) 的长整型张量），通过多次生成新 token 来完成序列。
-            在 model.eval() 模式下运行。效率较低的采样版本，没有使用键k/v cache。
-            """
-    #stop_id 的作用是指定一个特殊的标记，当生成的 token 等于这个标记时，生成过程将停止。这通常用于控制生成文本的长度或在特定条件下结束生成过程。例如，在语言模型中，可以使用一个特殊的结束标记（如<eos>）作为 stop_id，当模型生成这个标记时，表示生成文本已经完成，可以停止继续生成新的 token。通过使用 stop_id，可以更好地控制生成文本的结构和内容，提高生成结果的质量和相关性。
-    #max_new_tokens 参数指定了在生成过程中最多可以生成多少个新的 token。这是一个限制生成文本长度的参数，确保生成过程不会无限进行下去。通过设置 max_new_tokens，可以控制生成文本的长度，避免生成过长的文本，从而提高生成结果的质量和相关性。
-    #temperature 参数控制生成文本的多样性和随机性。较高的 temperature 值会增加生成文本的多样性，使得模型更倾向于选择概率较低的 token，从而产生更多样化的输出。较低的 temperature 值会减少生成文本的多样性，使得模型更倾向于选择概率较高的 token，从而产生更保守和确定性的输出。通过调整 temperature 参数，可以根据需要控制生成文本的风格和内容。
-    #top_k 参数控制生成文本的多样性和随机性。它指定了在生成过程中，模型只考虑概率最高的 top_k 个 token 进行采样，从而限制了生成文本的选择范围。
-    index=idx.shape[1]
-    for _ in range(max_new_tokens):
-        idx_cond=idx if idx.size(1) <=self.args.max_seq_len else idx[:, -self.args.max_seq_len:] #进行上下文截断，当序列过长的时候，选择保留最近的max_seq_len个token
+    @torch.inference_mode()
+    #这是一个装饰器，表示在这个函数中不需要计算梯度，这对于推理阶段非常有用，可以节省内存和计算资源，提高推理效率。通过使用@torch.inference_mode()装饰器，模型在执行generate函数时将不会计算梯度，从而加快生成过程并减少内存使用。和torch.no_grad()类似，@torch.inference_mode()还会禁用某些特定于训练的功能，如dropout和batch normalization，以确保在推理阶段模型的行为与训练阶段一致，从而提高生成文本的质量和准确性。
+    def generate(self,idx,stop_id=None,max_new_tokens=256,temperature=1.0,top_k=None):
+        """
+                给定输入序列 idx（形状为 (bz,seq_len) 的长整型张量），通过多次生成新 token 来完成序列。
+                在 model.eval() 模式下运行。效率较低的采样版本，没有使用键k/v cache。
+                """
+        #stop_id 的作用是指定一个特殊的标记，当生成的 token 等于这个标记时，生成过程将停止。这通常用于控制生成文本的长度或在特定条件下结束生成过程。例如，在语言模型中，可以使用一个特殊的结束标记（如<eos>）作为 stop_id，当模型生成这个标记时，表示生成文本已经完成，可以停止继续生成新的 token。通过使用 stop_id，可以更好地控制生成文本的结构和内容，提高生成结果的质量和相关性。
+        #max_new_tokens 参数指定了在生成过程中最多可以生成多少个新的 token。这是一个限制生成文本长度的参数，确保生成过程不会无限进行下去。通过设置 max_new_tokens，可以控制生成文本的长度，避免生成过长的文本，从而提高生成结果的质量和相关性。
+        #temperature 参数控制生成文本的多样性和随机性。较高的 temperature 值会增加生成文本的多样性，使得模型更倾向于选择概率较低的 token，从而产生更多样化的输出。较低的 temperature 值会减少生成文本的多样性，使得模型更倾向于选择概率较高的 token，从而产生更保守和确定性的输出。通过调整 temperature 参数，可以根据需要控制生成文本的风格和内容。
+        #top_k 参数控制生成文本的多样性和随机性。它指定了在生成过程中，模型只考虑概率最高的 top_k 个 token 进行采样，从而限制了生成文本的选择范围。
+        index=idx.shape[1]
+        for _ in range(max_new_tokens):
+            idx_cond=idx if idx.size(1) <=self.args.max_seq_len else idx[:, -self.args.max_seq_len:] #进行上下文截断，当序列过长的时候，选择保留最近的max_seq_len个token
 
 
-        logits=self(idx_cond).logits #self(idx_cond)用法是调用模型的前向传播函数，传入当前的输入序列idx_cond，并获取输出对象中的logits属性。这个logits属性包含了模型在当前输入序列下对下一个 token 的预测分数，这些分数可以用于后续的采样过程来生成新的 token。
-        logits=logits[:,-1,:] #只取最后一个位置的logits，logits维度变为 (batch_size, vocab_size)，表示模型对下一个 token 的预测分数。通过选择最后一个位置的logits，我们可以专注于当前时间步的输出，从而提高生成效率和准确性，因为在生成任务中，我们通常只关心当前时间步的输出，而不需要计算整个序列的输出。
+            logits=self(idx_cond).logits #self(idx_cond)用法是调用模型的前向传播函数，传入当前的输入序列idx_cond，并获取输出对象中的logits属性。这个logits属性包含了模型在当前输入序列下对下一个 token 的预测分数，这些分数可以用于后续的采样过程来生成新的 token。
+            logits=logits[:,-1,:] #只取最后一个位置的logits，logits维度变为 (batch_size, vocab_size)，表示模型对下一个 token 的预测分数。通过选择最后一个位置的logits，我们可以专注于当前时间步的输出，从而提高生成效率和准确性，因为在生成任务中，我们通常只关心当前时间步的输出，而不需要计算整个序列的输出。
 
-        if temperature == 0.0:
-            _,idx_next=torch.topk(logits,k=1,dim=-1) #top_k函数有两个参数：k和dim。k参数指定了要返回的最大值的数量，这里设置为1，表示只返回最大的一个值。返回值是一个元组，包含了最大值和对应的索引。通过使用_来忽略最大值，只保留索引idx_next，这个索引表示了在logits张量中具有最高分数的token的位置。这个位置对应于模型预测的下一个 token 的索引，可以用于生成新的 token。
-        else:
-            logits=logits/temperature #对logits进行温度缩放，缩放的目的是为了控制生成文本的多样性和随机性。通过将logits除以temperature，可以调整模型在生成过程中选择下一个 token 的概率分布。当temperature较高时，模型更倾向于选择概率较低的 token，从而产生更多样化的输出；当temperature较低时，模型更倾向于选择概率较高的 token，从而产生更保守和确定性的输出。
-            if top_k is not None:
-                v,_ =torch.topk(logits,k=min(top_k,logits.size(-1))) #取出logits中概率最高的top_k个值，v是这些值的张量，_是对应的索引。通过使用min(top_k, logits.size(-1))，确保在top_k大于词汇表大小时不会出现错误，因为logits.size(-1)表示词汇表的大小。
-                logits[logits<v[:,[-1]]]=-float('inf') #将logits中不在top_k范围内的值设置为负无穷，这样在后续的softmax计算中，这些值的概率将接近于零，从而限制了生成文本的选择范围，提高生成文本的质量和相关性。
-            probs=F.softmax(logits,dim=-1)
-            idx_next=torch.multinomial(probs,num_samples=1) #多项式采样，probs是一个形状为 (batch_size, vocab_size) 的张量，表示每个 token 的概率分布。通过使用torch.multinomial函数，可以根据这个概率分布随机采样一个 token 的索引，num_samples=1表示每个样本只采样一个 token。配合温度控制和top_k过滤，这个采样过程可以生成多样化且相关性较高的文本输出。
+            if temperature == 0.0:
+                _,idx_next=torch.topk(logits,k=1,dim=-1) #top_k函数有两个参数：k和dim。k参数指定了要返回的最大值的数量，这里设置为1，表示只返回最大的一个值。返回值是一个元组，包含了最大值和对应的索引。通过使用_来忽略最大值，只保留索引idx_next，这个索引表示了在logits张量中具有最高分数的token的位置。这个位置对应于模型预测的下一个 token 的索引，可以用于生成新的 token。
+            else:
+                logits=logits/temperature #对logits进行温度缩放，缩放的目的是为了控制生成文本的多样性和随机性。通过将logits除以temperature，可以调整模型在生成过程中选择下一个 token 的概率分布。当temperature较高时，模型更倾向于选择概率较低的 token，从而产生更多样化的输出；当temperature较低时，模型更倾向于选择概率较高的 token，从而产生更保守和确定性的输出。
+                if top_k is not None:
+                    v,_ =torch.topk(logits,k=min(top_k,logits.size(-1))) #取出logits中概率最高的top_k个值，v是这些值的张量，_是对应的索引。通过使用min(top_k, logits.size(-1))，确保在top_k大于词汇表大小时不会出现错误，因为logits.size(-1)表示词汇表的大小。
+                    logits[logits<v[:,[-1]]]=-float('inf') #将logits中不在top_k范围内的值设置为负无穷，这样在后续的softmax计算中，这些值的概率将接近于零，从而限制了生成文本的选择范围，提高生成文本的质量和相关性。
+                probs=F.softmax(logits,dim=-1)
+                idx_next=torch.multinomial(probs,num_samples=1) #多项式采样，probs是一个形状为 (batch_size, vocab_size) 的张量，表示每个 token 的概率分布。通过使用torch.multinomial函数，可以根据这个概率分布随机采样一个 token 的索引，num_samples=1表示每个样本只采样一个 token。配合温度控制和top_k过滤，这个采样过程可以生成多样化且相关性较高的文本输出。
 
-        if idx_next==stop_id:
-            break
+            if idx_next==stop_id:
+                break
 
-        idx=torch.cat((idx,idx_next),dim=1) #将新生成的 token 的索引 idx_next 连接到当前的输入序列 idx 上，形成一个新的输入序列，以便在下一次迭代中继续生成下一个 token。通过使用 torch.cat 函数，可以沿着指定的维度（这里是 dim=1，即序列长度维度）将 idx 和 idx_next 连接起来，从而更新输入序列以包含新生成的 token。
-    return idx[:,index:] #输出新生成的token索引
+            idx=torch.cat((idx,idx_next),dim=1) #将新生成的 token 的索引 idx_next 连接到当前的输入序列 idx 上，形成一个新的输入序列，以便在下一次迭代中继续生成下一个 token。通过使用 torch.cat 函数，可以沿着指定的维度（这里是 dim=1，即序列长度维度）将 idx 和 idx_next 连接起来，从而更新输入序列以包含新生成的 token。
+        return idx[:,index:] #输出新生成的token索引
 
 
 def eval_tokenizer(tokenizer_path: str) -> None:
