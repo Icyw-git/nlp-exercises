@@ -385,12 +385,17 @@ class Transformer(PreTrainedModel):
             self.last_loss=None
 
         
-        #设置输出的logits和last_loss属性，以便在模型的前向传播过程中返回这些信息。通过使用__setitem__方法，可以将logits和last_loss存储在OUT对象中，这个对象是CausalLMOutputWithPast类的实例，提供了一个标准化的输出格式，包含生成任务所需的所有信息。
+        #设置输出的logits和last_loss属性，以便在模型的前向传播过程中返回这些信息。
+        # FIXED: 原用 self.OUT 共享单例——__init__ 中只 new 一次，每次 forward 调用
+        # 返回同一对象，上一次返回值的 .logits 会被后续调用覆盖，导致不可预期行为。
+        # 现改为每次 forward 新建 CausalLMOutputWithPast 实例返回。
         return CausalLMOutputWithPast(logits=logits,loss=self.last_loss)
 
 
 
 
+    # FIXED: 原 generate 函数缩进在 Transformer 类外部（缺少一级缩进），
+    # 调用 model.generate() 时报 AttributeError。现已正确移入类内。
     @torch.inference_mode()
     #这是一个装饰器，表示在这个函数中不需要计算梯度，这对于推理阶段非常有用，可以节省内存和计算资源，提高推理效率。通过使用@torch.inference_mode()装饰器，模型在执行generate函数时将不会计算梯度，从而加快生成过程并减少内存使用。和torch.no_grad()类似，@torch.inference_mode()还会禁用某些特定于训练的功能，如dropout和batch normalization，以确保在推理阶段模型的行为与训练阶段一致，从而提高生成文本的质量和准确性。
     def generate(self,idx,stop_id=None,max_new_tokens=256,temperature=1.0,top_k=None):

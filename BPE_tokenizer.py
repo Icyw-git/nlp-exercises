@@ -83,12 +83,15 @@ def train_tokenizer(data_path:str,save_dir:str,vocab_size:int=8192) -> None:
 
     #初始化分词器
     tokenizer=Tokenizer(models.BPE(unk_token="<unk>"))
+    # FIXED: 原为 nomalizer（少了一个 r），导致 AttributeError。正确拼写为 normalizer
     tokenizer.normalizer=NFKC() #NFKC（Normalization Form KC）是一种Unicode标准的文本规范化形式，用于将文本转换为一种标准化的形式，以便在处理文本时能够更一致地比较和匹配字符。NFKC会将一些字符转换为它们的兼容形式，例如将全角字符转换为半角字符，将某些组合字符分解为基本字符等，这有助于提高文本处理的准确性和一致性。
     tokenizer.pre_tokenizer=pre_tokenizers.ByteLevel(add_prefix_space=False) #ByteLevel预分词器用于将输入文本分割成字节级别的单元，特别适用于处理BPE（Byte Pair Encoding）分词器。它能够正确处理文本中的特殊字符和空格，并且在分词过程中保持原始文本的结构和格式，add_prefix_space参数控制是否在输入文本前添加一个空格，这对于某些语言和分词策略可能是必要的，以确保正确的分词结果。
     tokenizer.decoder=decoders.ByteLevel() #ByteLevel解码器用于将分词后的ID序列转换回原始文本，特别适用于处理字节级别的分词器，如BPE（Byte Pair Encoding）。它能够正确处理分词过程中引入的特殊标记和字节级别的编码，使得解码后的文本与原始输入保持一致。
 
 
     #配置特殊的token
+    # FIXED: 原 "<unk>" 后缺逗号，Python 将相邻字符串隐式拼接为 "<unk><s>"，
+    # 导致 special_tokens 集合中出现错误 token，下游 assertion 验证失败
     special_tokens={
         "<unk>",
         "<s>",
