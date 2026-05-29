@@ -1,0 +1,338 @@
+# 导包
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
+from dataclasses import dataclass
+from transformers import BertTokenizer
+
+
+@dataclass  # 这里是一个数据类，用于存储模型的参数
+class ModelArgs:
+    n_embed: int  # 嵌入维度
+    n_heads: int  # 注意力头数
+    dim: int  # 模型维度
+    dropout: float  # dropout率
+    max_len: int  # 最大序列长度
+    vocab_size: int  # 词表大小
+    block_size: int  # 块的大小
+    n_layers: int  # 层数
+
+
+class MultiheadAttention(nn.Module):
+    def __init__(self, args: ModelArgs, is_causal=False):  # args:ModelArgs是一个参数类，is_casual是一个布尔值，表示是否使用因果注意力
+        super().__init__()
+        assert args.dim % args.n_heads == 0  # 断言，隐藏维度必须可以被头数整除
+        self.head_dim = args.dim // args.n_heads  # 每个注意力头的维度
+        self.n_heads = args.n_heads
+
+        # wq,wk,wv是三个线性层，用于计算查询、键和值，实际维度没有改变
+        self.wq = nn.Linear(args.dim, self.head_dim * self.n_heads, bias=False)
+        self.wk = nn.Linear(args.dim, self.head_dim * self.n_heads, bias=False)
+        self.wv = nn.Linear(args.dim, self.head_dim * self.n_heads, bias=False)
+
+        self.wo = nn.Linear(args.dim, args.dim, bias=False)
+
+        # dropout层
+        self.attn_dropout = nn.Dropout(args.dropout)
+
+        # 残差链接的dropout,在最后输出之前使用
+        self.resid_dropout = nn.Dropout(args.dropout)
+        self.is_causal = is_causal
+
+        # 创建一个上三角矩阵，作为未来掩码
+        # 因为是多头注意力，所以要添加一个维度
+        if is_causal:  # 如果是因果注意力
+            mask = torch.full((1, 1, args.max_len, args.max_len), float('-inf'))
+            mask = torch.triu(mask, diagonal=1)  # 上三角矩阵，主对角线以上的元素为-inf，其他元素为0
+
+            # 将掩码注册为模型的缓冲区
+            self.register_buffer('mask', mask)
+
+    def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor):
+        batch_size, seq_len, _ = q.size()  # 获取批次大小，序列长度
+
+        # 计算q,k,v，通过线性层
+        xq, xk, xv = self.wq(q), self.wk(k), self.wv(v)
+
+        # 拆分为多头注意力
+        xq = xq.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        xk = xk.view(batch_size, seq_len, self.n_heads, self.head_dim)
+        xv = xv.view(batch_size, seq_len, self.n_heads, self.head_dim)
+
+        # 转换维度
+        xq = xq.transpose(1, 2)
+        xk = xk.transpose(1, 2)
+        xv = xv.transpose(1, 2)
+
+        # 计算注意力分数
+        scores = torch.matmul(xq, xk.transpose(-2, -1)) / math.sqrt(self.head_dim)  # 这里要除以根号下头的维度，进行缩放，防止数据过大
+        if self.is_causal:
+            assert hasattr(self, 'mask')  # 断言，确保模型有掩码属性,hasattr()函数用于检查对象是否具有指定的属性
+
+            # 添加掩码
+            scores = scores + self.mask[:, :, :seq_len, :seq_len]
+
+        # 计算softmax
+        scores = F.softmax(scores, dim=-1).type_as(xq)  # type_as函数用法是保证softmax的输出类型与xq相同
+
+        # 注意力的dropout
+        scores = self.attn_dropout(scores)
+
+        # 计算注意力输出
+        output = torch.matmul(scores, xv)
+
+        # 合并多头
+        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+
+        # 最后投影回残差流 这里的残差流是指输入和输出的维度相同，可以直接相加
+        output = self.wo(output)
+        output = self.resid_dropout(output)
+        return output
+
+
+# layernorm层
+
+class LayerNorm(nn.Module):
+    def __init__(self, features, eps=1e-6):
+        super().__init__()
+        # 利用线性矩阵做映射
+        self.a_2 = nn.Parameter(torch.ones(features))
+        self.b_2 = nn.Parameter(torch.zeros(features))
+        self.eps = eps
+
+    def forward(self, x):
+        # 归一化
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+
+        # 在最后一个维度发生了广播
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
+
+
+class MLP(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout):
+        super().__init__()
+
+        # 第一层：从输入维度变换至隐藏维度
+        self.w1 = nn.Linear(dim, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, dim, bias=False)
+        # 定义dropout
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        x = self.w1(x)
+        x = F.relu(x)
+        x = self.w2(x)
+        x = self.dropout(x)
+        return x
+
+
+# 定义编码层
+class EncoderLayer(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
+        # 需要两个子层结构
+        self.attention_norm = LayerNorm(args.n_embed)
+
+        # Encoder不需要掩码，is_casual=False
+        self.attention = MultiheadAttention(args, is_causal=False)
+        self.ffn_norm = LayerNorm(args.n_embed)
+        self.feed_forward = MLP(args.dim, args.dim, args.dropout)
+
+    def forward(self, x):
+        # 注意力子层
+        x = self.attention_norm(x)
+        h = x + self.attention.forward(x, x, x)  # 残差链接
+
+        # 前馈神经网络
+        out = h + self.feed_forward.forward(self.ffn_norm(h))
+
+        return out
+
+
+''' Encoder块'''
+
+
+class Encoder(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.layers = nn.ModuleList([EncoderLayer(args) for _ in range(args.n_layers)])
+
+        # 通过一个层归一化
+        self.norm = LayerNorm(args.n_embed)
+
+    def forward(self, x):
+        for layer in self.layers:
+            x = layer(x)
+        return self.norm(x)
+
+
+class DecoderLayer(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
+        # 需要三个子层结构
+        self.attention_norm1 = LayerNorm(args.n_embed)
+        self.mask_attention = MultiheadAttention(args, is_causal=True)
+
+        self.attention_norm2 = LayerNorm(args.n_embed)
+        self.attention = MultiheadAttention(args, is_causal=False)
+
+        self.ffn_norm = LayerNorm(args.n_embed)
+        self.feed_forward = MLP(args.dim, args.dim, args.dropout)
+
+    def forward(self, x, enc_out):
+        # 第一个子层：掩码多头注意力
+        x = self.attention_norm1(x)
+        x = x + self.mask_attention(x, x, x)
+
+        # 第二个子层：多头注意力，查询来自解码器的输入，键和值来自编码器的输出
+        x = self.attention_norm2(x)
+        h = x + self.attention.forward(x, enc_out, enc_out)
+
+        # 第三个子层：前馈神经网络
+        out = h + self.feed_forward.forward(self.ffn_norm(h))
+        return out
+
+
+class Decoder(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        self.layers = nn.ModuleList([DecoderLayer(args) for _ in range(args.n_layers)])
+        self.norm = LayerNorm(args.n_embed)
+
+    def forward(self, x, enc_out):
+        for layer in self.layers:
+            x = layer(x, enc_out)
+        return self.norm(x)
+
+
+class PositionEncoding(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
+        # 创建一个位置编码矩阵，大小为(max_len,dim)
+        pe = torch.zeros(args.block_size, args.n_embed)
+        position = torch.arange(0, args.block_size).unsqueeze(1)  # 维数为(max_len,1)
+        div_term = torch.exp(torch.arange(0, args.n_embed, 2) * -(math.log(10000.0) / args.n_embed))
+
+        # 计算奇数位和偶数位
+        pe[:, 0::2] = torch.sin(position * div_term)  # 奇数位
+        pe[:, 1::2] = torch.cos(position * div_term)  # 偶数位
+
+        # 增加批次维度
+        pe = pe.unsqueeze(0)
+
+        # 注册至缓存区
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        # 将位置编码加在embedding层
+        x = x + self.pe[:, :x.size(1), :]
+        return x
+
+
+class Transformer(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+
+        # 必须输入词表大小和block_size
+        assert args.vocab_size is not None  # 断言，确保词表大小不为None
+        assert args.block_size is not None
+
+        self.args = args
+        # 使用一个模块字典存储不同的模块
+        self.transformer = nn.ModuleDict(
+            dict(wte=nn.Embedding(args.vocab_size, args.n_embed), wpe=PositionEncoding(args),
+                 dropout=nn.Dropout(args.dropout), encoder=Encoder(args), decoder=Decoder(args)))
+
+        # 最后的线性层，输出的是词表大小的概率
+        self.lm_head = nn.Linear(args.n_embed, args.vocab_size, bias=False)
+
+        # 初始化所有的权重
+        self.apply(self._init_weights)  # apply是nn.Module的一个方法，会对模型的所有模块调用括号内的函数
+
+        # 查看所有参数的数量
+        print("number of parameters: %.2fM" % (self.get_num_params() / 1e6,))
+
+    def get_num_params(self, non_embedding=False):
+        # non_embedding：是否统计嵌入层的参数
+        n_params = sum(p.numel() for p in self.parameters())  # numel()函数返回一个张量的元素数量，统计所有的参数数量
+        # 若不统计embedding层，则最后减去嵌入层的参数数量
+        if non_embedding:
+            n_params -= self.transformer.wte.weight.numel()  # wte是词嵌入层，weight是它的权重参数，numel()函数返回这个权重参数的元素数量，即嵌入层的参数数量
+        return n_params
+
+    # 初始化权重,其中的module来自于apply函数，会对模型的所有模块调用这个函数，module就是当前被调用的模块
+    def _init_weights(self, module):
+        # isinstance函数用来判断一个对象是否是一个类的实例，或者是否是一个类的子类的实例，在这里用来判断当前模块的类型
+        # 在module内会逐个判断当前模块的类型，若不匹配则跳过
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0,
+                                  std=0.02)  # weight和bias是nn.Linear的参数，normal_函数用来初始化权重，mean是均值，std是标准差
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0, std=0.02)
+
+    def forward(self, idx, targets=None):
+        # 获取device位置，保证所有的计算在同一设备上进行
+        device = idx.device
+
+        batch, seq = idx.size()
+        assert seq <= self.args.block_size  # 确保小于最大长度
+
+        print('idx', idx.size())
+
+        # embedding编码
+        tok_embed = self.transformer.wte(idx)
+        print('tok_embed', tok_embed.size())
+
+        # position编码
+        pos_embed = self.transformer.wpe(tok_embed)
+
+        # 进行dropout
+        x = self.transformer.dropout(pos_embed)
+        print('pos_embed', pos_embed.size())
+
+        # 编码器
+        enc_out = self.transformer.encoder(x)
+        print('enc_out', enc_out.size())
+
+        # 解码器
+        x = self.transformer.decoder(x, enc_out)
+        print('dec_out', x.size())
+
+        if targets is not None:
+            # 训练阶段，需要计算损失，targets的维度是(batch,seq)，而logits的维度是(batch,seq,vocab_size)，所以需要将logits和targets都展平为(batch*seq,vocab_size)和(batch*seq)，才能计算交叉熵损失
+            # 如果给了target就计算loss
+            logits = self.lm_head(x)  # 通过线性层得到词表大小的输出
+            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+
+        else:
+            # 推理阶段，只需要最后一个位置的logits，因为在生成文本时，每次只生成一个token，所以只需要最后一个位置的输出即可
+            logits = self.lm_head(x[:, [-1], :])
+            loss = None
+
+        return logits, loss
+
+
+def main():
+    args = ModelArgs(256, 16, 256, 0.1, 512, 1000, 1000, 2)
+    text = '我讨厌'
+    tokenizer = BertTokenizer.from_pretrained('bert-base-chinese')
+    input_token = tokenizer(text, return_tensors='pt', max_length=args.max_len, truncation=True, padding='max_length')
+    args.vocab_size = tokenizer.vocab_size
+
+    transformer = Transformer(args)
+    inputs_id = input_token['input_ids']
+    logits, loss = transformer(inputs_id)
+
+    predicted_ids = torch.argmax(logits, dim=-1).item()
+    print(tokenizer.decode(predicted_ids))
+
+
+if __name__ == '__main__':
+    main()
