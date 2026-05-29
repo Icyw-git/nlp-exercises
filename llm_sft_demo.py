@@ -1,8 +1,8 @@
 import json
-from torch.utils.data import Dataset,DataLoader
+from torch.utils.data import Dataset, DataLoader
 from transformers import AutoTokenizer
 import torch
-from llm_LLaMA2 import ModelConfig,Transformer
+from llm_LLaMA2 import ModelConfig, Transformer
 import swanlab
 import time
 from dotenv import load_dotenv
@@ -10,199 +10,185 @@ import os
 import random
 import numpy as np
 
-
-#设置随机种子，确保结果的可复现性，在涉及随机性的操作中，例如数据分割、模型初始化等，使用相同的随机种子可以获得一致的结果，这对于调试和比较不同实验非常有用。
+# 设置随机种子，确保结果的可复现性，在涉及随机性的操作中，例如数据分割、模型初始化等，使用相同的随机种子可以获得一致的结果，这对于调试和比较不同实验非常有用。
 random.seed(42)
 np.random.seed(42)
 torch.manual_seed(42)
-
-
-
-
-
 
 load_dotenv()
 api_key = os.getenv("SWANLAB_API_KEY")
 swanlab.login(api_key)
 
-tokenizer=AutoTokenizer.from_pretrained('tokenizer')
+tokenizer = AutoTokenizer.from_pretrained('tokenizer')
 
-
-with open('./data/alpaca_data_cleaned.json','r',encoding='utf-8') as f:
-    data=json.load(f)
-train_data=data[:int(len(data)*0.9)]
-val_data=data[int(len(data)*0.9):]
+with open('./data/alpaca_data_cleaned.json', 'r', encoding='utf-8') as f:
+    data = json.load(f)
+train_data = data[:int(len(data) * 0.9)]
+val_data = data[int(len(data) * 0.9):]
 
 
 class SFTDataset(Dataset):
-    def __init__(self,file_path,tokenizer,max_length,from_list=True):
+    def __init__(self, file_path, tokenizer, max_length, from_list=True):
         super().__init__()
-        self.tokenizer=tokenizer
-        self.max_length=max_length
-        self.data=file_path
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.data = file_path
         if not from_list:
-            with open(file_path,'r',encoding='utf-8') as f:
-                self.data=json.load(f) #json.load和json.loads的区别在于前者用于从文件中读取JSON数据并解析成Python对象，而后者用于从字符串中解析JSON数据。这里使用json.load是因为数据存储在一个JSON文件中，需要从文件中读取并解析成Python对象，以便后续的数据处理和模型训练。
+            with open(file_path, 'r', encoding='utf-8') as f:
+                self.data = json.load(
+                    f)  # json.load和json.loads的区别在于前者用于从文件中读取JSON数据并解析成Python对象，而后者用于从字符串中解析JSON数据。这里使用json.load是因为数据存储在一个JSON文件中，需要从文件中读取并解析成Python对象，以便后续的数据处理和模型训练。
 
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self,idx):
-        example=self.data[idx]
-        instruction=example['instruction']
-        input=example.get('input','') #使用get方法获取输入内容，如果没有输入字段，则默认为空字符串，这样可以确保在构建提示时不会出现错误，并且可以处理没有输入的情况。
-        output=example['output']
+    def __getitem__(self, idx):
+        example = self.data[idx]
+        instruction = example['instruction']
+        input = example.get('input', '')  # 使用get方法获取输入内容，如果没有输入字段，则默认为空字符串，这样可以确保在构建提示时不会出现错误，并且可以处理没有输入的情况。
+        output = example['output']
 
-        prompt=f'###User:\n{instruction}\n{input}\n\n###Assistant:\n'  #拼接成prompt字段，包含用户的指令、输入和助手的回答，这样可以为模型提供足够的上下文信息，以便进行监督学习微调。使用特定的格式（例如###User:和###Assistant:）可以帮助模型更好地理解不同角色之间的关系，从而提高生成回答的质量。
-        answer=output
+        prompt = f'###User:\n{instruction}\n{input}\n\n###Assistant:\n'  # 拼接成prompt字段，包含用户的指令、输入和助手的回答，这样可以为模型提供足够的上下文信息，以便进行监督学习微调。使用特定的格式（例如###User:和###Assistant:）可以帮助模型更好地理解不同角色之间的关系，从而提高生成回答的质量。
+        answer = output
 
-        prompt_ids=self.tokenizer.encode(prompt,add_special_tokens=False) #解码成ids，返回的数据类型是List,和tokenizer方法的区别是tokenizer方法返回一个字典，包含输入ID、注意力掩码等信息，返回的是tensor类型。
+        prompt_ids = self.tokenizer.encode(prompt,
+                                           add_special_tokens=False)  # 解码成ids，返回的数据类型是List,和tokenizer方法的区别是tokenizer方法返回一个字典，包含输入ID、注意力掩码等信息，返回的是tensor类型。
 
-        answer_ids=self.tokenizer.encode(answer,add_special_tokens=False)
+        answer_ids = self.tokenizer.encode(answer, add_special_tokens=False)
 
         if self.tokenizer.eos_token_id is not None:
-            answer_ids.append(self.tokenizer.eos_token_id) #选择是否添加结束标记，如果分词器定义了结束标记（eos_token_id），则将其添加到答案ID的末尾，以便模型在生成回答时知道何时停止生成。
+            answer_ids.append(
+                self.tokenizer.eos_token_id)  # 选择是否添加结束标记，如果分词器定义了结束标记（eos_token_id），则将其添加到答案ID的末尾，以便模型在生成回答时知道何时停止生成。
 
-        input_ids=prompt_ids+answer_ids
-        labels=[-100]*len(prompt_ids)+answer_ids #构建标签，使用-100来标记不需要计算损失的位置，这样模型在计算损失时只会关注答案部分，而不会受到提示部分的影响。
+        input_ids = prompt_ids + answer_ids
+        labels = [-100] * len(prompt_ids) + answer_ids  # 构建标签，使用-100来标记不需要计算损失的位置，这样模型在计算损失时只会关注答案部分，而不会受到提示部分的影响。
 
-
-        input_ids=input_ids[:self.max_length]
-        labels=labels[:self.max_length]
-        assert len(input_ids)==len(labels)
-
+        input_ids = input_ids[:self.max_length]
+        labels = labels[:self.max_length]
+        assert len(input_ids) == len(labels)
 
         return {
-            'input_ids': torch.tensor(input_ids,dtype=torch.long),
-            'labels': torch.tensor(labels,dtype=torch.long),
+            'input_ids': torch.tensor(input_ids, dtype=torch.long),
+            'labels': torch.tensor(labels, dtype=torch.long),
         }
 
-train_dataset=SFTDataset(train_data,tokenizer,256)
-val_dataset=SFTDataset(val_data,tokenizer,256)
+
+train_dataset = SFTDataset(train_data, tokenizer, 256)
+val_dataset = SFTDataset(val_data, tokenizer, 256)
 
 
-
-def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):  #用于将__getitem__获得的一个样本整合成一个批次的数据
-    max_len=max(x['input_ids'].numel() for x in batch)  #batch包含了一个批次的样本数据
-    input_ids=[]
-    labels=[]
+def collate_fn(batch, pad_id=tokenizer.eos_token_id, label_pad_id=-100):  # 用于将__getitem__获得的一个样本整合成一个批次的数据
+    max_len = max(x['input_ids'].numel() for x in batch)  # batch包含了一个批次的样本数据
+    input_ids = []
+    labels = []
     for x in batch:
-        ids=x['input_ids']
-        lab=x['labels']
-        pad_len=max_len-len(ids) #计算每个批次中需要填充的长度，确保每一批次的长度相等
-        input_ids.append(torch.cat([ids,torch.full((pad_len,),pad_id,dtype=torch.long)]))
-        labels.append(torch.cat([lab,torch.full((pad_len,),label_pad_id,dtype=torch.long)]))
+        ids = x['input_ids']
+        lab = x['labels']
+        pad_len = max_len - len(ids)  # 计算每个批次中需要填充的长度，确保每一批次的长度相等
+        input_ids.append(torch.cat([ids, torch.full((pad_len,), pad_id, dtype=torch.long)]))
+        labels.append(torch.cat([lab, torch.full((pad_len,), label_pad_id, dtype=torch.long)]))
 
-    return {'input_ids': torch.stack(input_ids), 'labels': torch.stack(labels)} #将ids和lab堆叠成一个批次的数据，返回一个字典，包含输入ID和标签的批次数据，这些数据将用于模型的训练过程。
+    return {'input_ids': torch.stack(input_ids),
+            'labels': torch.stack(labels)}  # 将ids和lab堆叠成一个批次的数据，返回一个字典，包含输入ID和标签的批次数据，这些数据将用于模型的训练过程。
 
-train_dataloader=DataLoader(train_dataset,batch_size=4,shuffle=True,collate_fn=collate_fn)
-val_dataloader=DataLoader(val_dataset,batch_size=4,collate_fn=collate_fn)
 
-def eval_on_valid_set(model,valid_loader):
+train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+val_dataloader = DataLoader(val_dataset, batch_size=4, collate_fn=collate_fn)
+
+
+def eval_on_valid_set(model, valid_loader):
     model.eval()
-    total_loss,total_tokens=0,0
+    total_loss, total_tokens = 0, 0
 
     with torch.no_grad():
         for batch in valid_loader:
-            inputs=batch['input_ids'][:,:-1].to(device)
-            labels=batch['labels'][:,1:].to(device)
-            outputs=model(inputs,labels=labels)
-            loss =outputs.last_loss.mean()
-            total_loss+=loss.item()*labels.numel()
-            total_tokens+=labels.numel()
-        return total_loss/total_tokens
+            inputs = batch['input_ids'][:, :-1].to(device)
+            labels = batch['labels'][:, 1:].to(device)
+            outputs = model(inputs, labels=labels)
+            loss = outputs.last_loss.mean()
+            total_loss += loss.item() * labels.numel()
+            total_tokens += labels.numel()
+        return total_loss / total_tokens
 
 
-
-
-
-
-
-
-
-args=ModelConfig()
+args = ModelConfig()
 
 swanlab.init(
     project='my-awesome-project',
     experiment='llm-sft-demo',
-    tags=['sft','transformer'],
+    tags=['sft', 'transformer'],
     config={
         'epochs': 4,
         'batch_size': 4,
         'learning_rate': 3e-4,
-        'model_config':args.__dict__
+        'model_config': args.__dict__
     }
 )
 
-device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model=Transformer(args).to(device)
-optimizer=torch.optim.AdamW(model.parameters(),lr=3e-4,betas=(0.9,0.95),weight_decay=0.01)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = Transformer(args).to(device)
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), weight_decay=0.01)
 
-epochs=4
+epochs = 4
 best_loss = float('inf')
-patience=10
-pat_counter=0
+patience = 10
+pat_counter = 0
 
 for epoch in range(epochs):
     model.train()
-    total_loss,total_tokens,start,end=0,0,0,0
-    start=time.time()
-    for step,batch in enumerate(train_dataloader):
+    total_loss, total_tokens, start, end = 0, 0, 0, 0
+    start = time.time()
+    for step, batch in enumerate(train_dataloader):
         optimizer.zero_grad()
-        input_ids=batch['input_ids'][:,:-1].to(device)
-        labels=batch['labels'][:,1:].to(device)
+        input_ids = batch['input_ids'][:, :-1].to(device)
+        labels = batch['labels'][:, 1:].to(device)
 
-        outputs=model(input_ids,labels=labels)
+        outputs = model(input_ids, labels=labels)
 
-        loss=outputs.last_loss.mean() #模型输出的last_loss是一个张量，包含了每个位置的损失值
+        loss = outputs.last_loss.mean()  # 模型输出的last_loss是一个张量，包含了每个位置的损失值
         loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(),1.0)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-        total_tokens+=labels.numel()
-        total_loss+=loss.item()*labels.numel()
+        total_tokens += labels.numel()
+        total_loss += loss.item() * labels.numel()
 
-        if step %100==0:
+        if step % 100 == 0:
             torch.save(
                 {
-                    'model_state_dict':model.state_dict(),
-                    'optimizer_state_dict':optimizer.state_dict(),
-                    'epoch':epoch,
-                    'step':step,
-                    'rng_state':torch.get_rng_state(),
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'epoch': epoch,
+                    'step': step,
+                    'rng_state': torch.get_rng_state(),
 
-
-
-                },f'checkpoint_s{step}_e{epoch}.pth'
+                }, f'checkpoint_s{step}_e{epoch}.pth'
 
             )
 
-
-    end=time.time()
-    epoch_loss=total_loss/total_tokens
-    epoch_time=end-start
+    end = time.time()
+    epoch_loss = total_loss / total_tokens
+    epoch_time = end - start
     swanlab.log({
         'epoch_loss': epoch_loss,
         'epoch_time': epoch_time
     })
-    print(f'Epoch {epoch+1}/{epochs}, Loss: {epoch_loss:.4f}, Time: {epoch_time:.2f} seconds')
+    print(f'Epoch {epoch + 1}/{epochs}, Loss: {epoch_loss:.4f}, Time: {epoch_time:.2f} seconds')
 
-    val_loss =eval_on_valid_set(model,val_dataloader)
+    val_loss = eval_on_valid_set(model, val_dataloader)
     swanlab.log({
         'epoch': epoch,
         'valid_loss': val_loss
     })
 
-    if val_loss <best_loss:
-        best_loss=val_loss
-        pat_counter=0
+    if val_loss < best_loss:
+        best_loss = val_loss
+        pat_counter = 0
     else:
-        pat_counter+=1
-        if pat_counter >patience:
+        pat_counter += 1
+        if pat_counter > patience:
             print('Early stopping triggered!')
             break
-
 
 swanlab.finish()
 print('训练完成！')
