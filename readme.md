@@ -246,7 +246,7 @@ pip install -r requirements.txt
    ```
 4. 或直接运行 Python 脚本：
    ```bash
-   python tranformer_model.py     # 训练从零实现的 Transformer
+   python transformer_model.py     # 训练从零实现的 Transformer
    python llm_LLaMA2.py           # 训练类 LLaMA2 架构 LLM
    ```
 
