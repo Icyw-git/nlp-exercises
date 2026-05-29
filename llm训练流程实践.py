@@ -8,6 +8,12 @@ from transformers import TrainingArguments,Trainer
 import swanlab
 from dotenv import load_dotenv
 
+from src.data.sft_dataset import SFTDataset
+from src.data.collate import collate_fn
+
+from functools import partial
+
+
 load_dotenv()
 api_key=os.getenv("SWANLAB_API_KEY")
 swanlab.login(api_key)
@@ -54,82 +60,12 @@ with open(data_path,'r',encoding='utf-8') as f:
 train_data=text[:int(len(text)*0.9)]
 val_data=text[int(len(text)*0.9):]
 
-class SFTDataset(Dataset):
-    def __init__(self,data,tokenizer,max_length):
-        super().__init__()
-        self.data=data
-        self.tokenizer=tokenizer
-        self.max_length=max_length
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self,idx):
-        example=self.data[idx]
-        instruction=example['instruction']
-        input=example.get('input','')
-        output=example.get('output','')
-
-        if input:
-                user_content=instruction+'\n'+input
-        else:
-                user_content=instruction
-
-        prompt = (
-                "<|im_start|>system\n你是一个乐于助人的助手。<|im_end|>\n"
-                "<|im_start|>user\n" + user_content + "<|im_end|>\n"
-                "<|im_start|>assistant\n"
-        )
-
-        prompt_ids=self.tokenizer.encode(prompt,add_special_tokens=False)
-        answer=self.tokenizer.encode(output,add_special_tokens=False)
-
-        if tokenizer.eos_token_id is not None:
-            answer.append(tokenizer.eos_token_id)
-
-        input_ids=prompt_ids+answer
-
-        labels=[-100]*len(prompt_ids)+answer
-
-        input_ids=input_ids[:self.max_length] #这里采用的是前截断的方式，如果输入文本超过了最大长度，就保留输入文本的最后部分，这样可以确保模型能够看到输入文本的结尾部分，这对于生成回答可能更有帮助，因为输入文本的结尾部分通常包含了最相关的信息。
-        labels=labels[:self.max_length]
-        assert len(input_ids)==len(labels)
-
-        return {
-            'input_ids': torch.tensor(input_ids,dtype=torch.long),
-            'labels': torch.tensor(labels,dtype=torch.long)
-        }
+train_dataset=SFTDataset(train_data,tokenizer,max_length=512,template='qwen2',from_list=True)
+val_dataset=SFTDataset(val_data,tokenizer,max_length=512,template='qwen2',from_list=True)
 
 
-train_dataset=SFTDataset(train_data,tokenizer,max_length=512)
-val_dataset=SFTDataset(val_data,tokenizer,max_length=512)
-
-
-
-
-def collate_fn(batch,pad_id=tokenizer.eos_token_id,label_pad_id=-100):
-    max_len=max(x['input_ids'].numel() for x in batch) #统计每个批次中的最长输入长度，以便进行动态填充
-    input_ids=[]
-    labels=[]
-
-    for x in batch:
-        ids=x['input_ids']
-        labs=x['labels']
-        pad_len=max_len-len(ids)
-        ids=torch.cat([ids,torch.full((pad_len,),pad_id,dtype=torch.long)]) #将输入ID进行填充，使用pad_id来填充输入ID，使得每个批次中的输入ID长度相同，这样可以方便地将它们堆叠成一个张量进行模型训练。
-        labs=torch.cat([labs,torch.full((pad_len,),label_pad_id,dtype=torch.long)])
-        input_ids.append(ids)
-        labels.append(labs)
-    return {
-        'input_ids': torch.stack(input_ids),
-        'labels': torch.stack(labels)
-    }
-
-
-
-
-train_dataloader=DataLoader(train_dataset,batch_size=2,shuffle=True,collate_fn=collate_fn)
-val_dataloader=DataLoader(val_dataset,batch_size=2,shuffle=False,collate_fn=collate_fn)
+train_dataloader=DataLoader(train_dataset,batch_size=2,shuffle=True,collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id))
+val_dataloader=DataLoader(val_dataset,batch_size=2,shuffle=False,collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id))
 
 for batch in train_dataloader:
     print(batch)

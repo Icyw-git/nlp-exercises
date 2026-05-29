@@ -10,6 +10,11 @@ import os
 import random
 import numpy as np
 
+from src.data.sft_dataset import SFTDataset
+from src.data.collate import collate_fn
+
+from functools import partial #这里的作用是创建一个新的函数，这个新函数是原函数的一个变体，已经预先填充了一些参数。通过使用partial，我们可以固定一些参数的值，从而简化函数的调用。例如，在这里我们可以使用partial来创建一个新的collate_fn函数，其中pad_id和label_pad_id已经被固定为特定的值，这样在DataLoader中使用这个新的collate_fn时，就不需要每次都传递这些参数了。
+
 # 设置随机种子，确保结果的可复现性，在涉及随机性的操作中，例如数据分割、模型初始化等，使用相同的随机种子可以获得一致的结果，这对于调试和比较不同实验非常有用。
 random.seed(42)
 np.random.seed(42)
@@ -26,73 +31,12 @@ with open('./data/alpaca_data_cleaned.json', 'r', encoding='utf-8') as f:
 train_data = data[:int(len(data) * 0.9)]
 val_data = data[int(len(data) * 0.9):]
 
-
-class SFTDataset(Dataset):
-    def __init__(self, file_path, tokenizer, max_length, from_list=True):
-        super().__init__()
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-        self.data = file_path
-        if not from_list:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                self.data = json.load(
-                    f)  # json.load和json.loads的区别在于前者用于从文件中读取JSON数据并解析成Python对象，而后者用于从字符串中解析JSON数据。这里使用json.load是因为数据存储在一个JSON文件中，需要从文件中读取并解析成Python对象，以便后续的数据处理和模型训练。
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        example = self.data[idx]
-        instruction = example['instruction']
-        input = example.get('input', '')  # 使用get方法获取输入内容，如果没有输入字段，则默认为空字符串，这样可以确保在构建提示时不会出现错误，并且可以处理没有输入的情况。
-        output = example['output']
-
-        prompt = f'###User:\n{instruction}\n{input}\n\n###Assistant:\n'  # 拼接成prompt字段，包含用户的指令、输入和助手的回答，这样可以为模型提供足够的上下文信息，以便进行监督学习微调。使用特定的格式（例如###User:和###Assistant:）可以帮助模型更好地理解不同角色之间的关系，从而提高生成回答的质量。
-        answer = output
-
-        prompt_ids = self.tokenizer.encode(prompt,
-                                           add_special_tokens=False)  # 解码成ids，返回的数据类型是List,和tokenizer方法的区别是tokenizer方法返回一个字典，包含输入ID、注意力掩码等信息，返回的是tensor类型。
-
-        answer_ids = self.tokenizer.encode(answer, add_special_tokens=False)
-
-        if self.tokenizer.eos_token_id is not None:
-            answer_ids.append(
-                self.tokenizer.eos_token_id)  # 选择是否添加结束标记，如果分词器定义了结束标记（eos_token_id），则将其添加到答案ID的末尾，以便模型在生成回答时知道何时停止生成。
-
-        input_ids = prompt_ids + answer_ids
-        labels = [-100] * len(prompt_ids) + answer_ids  # 构建标签，使用-100来标记不需要计算损失的位置，这样模型在计算损失时只会关注答案部分，而不会受到提示部分的影响。
-
-        input_ids = input_ids[:self.max_length]
-        labels = labels[:self.max_length]
-        assert len(input_ids) == len(labels)
-
-        return {
-            'input_ids': torch.tensor(input_ids, dtype=torch.long),
-            'labels': torch.tensor(labels, dtype=torch.long),
-        }
+train_dataset=SFTDataset(train_data, tokenizer, 256,template='chatglm2', from_list=True)
+val_dataset=SFTDataset(val_data, tokenizer, 256, template='chatglm2', from_list=True)
 
 
-train_dataset = SFTDataset(train_data, tokenizer, 256)
-val_dataset = SFTDataset(val_data, tokenizer, 256)
-
-
-def collate_fn(batch, pad_id=tokenizer.eos_token_id, label_pad_id=-100):  # 用于将__getitem__获得的一个样本整合成一个批次的数据
-    max_len = max(x['input_ids'].numel() for x in batch)  # batch包含了一个批次的样本数据
-    input_ids = []
-    labels = []
-    for x in batch:
-        ids = x['input_ids']
-        lab = x['labels']
-        pad_len = max_len - len(ids)  # 计算每个批次中需要填充的长度，确保每一批次的长度相等
-        input_ids.append(torch.cat([ids, torch.full((pad_len,), pad_id, dtype=torch.long)]))
-        labels.append(torch.cat([lab, torch.full((pad_len,), label_pad_id, dtype=torch.long)]))
-
-    return {'input_ids': torch.stack(input_ids),
-            'labels': torch.stack(labels)}  # 将ids和lab堆叠成一个批次的数据，返回一个字典，包含输入ID和标签的批次数据，这些数据将用于模型的训练过程。
-
-
-train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
-val_dataloader = DataLoader(val_dataset, batch_size=4, collate_fn=collate_fn)
+train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id)) #在DataLoader中使用partial函数创建一个新的collate_fn函数，其中pad_id已经被固定为tokenizer.eos_token_id，这样在每次调用collate_fn时，就不需要再传递pad_id参数了，简化了代码的调用，同时确保了在数据加载过程中使用正确的pad_id进行填充。
+val_dataloader = DataLoader(val_dataset, batch_size=4, collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id))
 
 
 def eval_on_valid_set(model, valid_loader):
