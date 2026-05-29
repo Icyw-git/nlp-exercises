@@ -53,7 +53,7 @@ class SFTDataset(Dataset):
         input=example.get('input','') #使用get方法获取输入内容，如果没有输入字段，则默认为空字符串，这样可以确保在构建提示时不会出现错误，并且可以处理没有输入的情况。
         output=example['output']
 
-        prompt=f'###User:\n{instruction}\n{input}\n\n###Assistant:\n{output}\n'  #拼接成prompt字段，包含用户的指令、输入和助手的回答，这样可以为模型提供足够的上下文信息，以便进行监督学习微调。使用特定的格式（例如###User:和###Assistant:）可以帮助模型更好地理解不同角色之间的关系，从而提高生成回答的质量。
+        prompt=f'###User:\n{instruction}\n{input}\n\n###Assistant:\n'  #拼接成prompt字段，包含用户的指令、输入和助手的回答，这样可以为模型提供足够的上下文信息，以便进行监督学习微调。使用特定的格式（例如###User:和###Assistant:）可以帮助模型更好地理解不同角色之间的关系，从而提高生成回答的质量。
         answer=output
 
         prompt_ids=self.tokenizer.encode(prompt,add_special_tokens=False) #解码成ids，返回的数据类型是List,和tokenizer方法的区别是tokenizer方法返回一个字典，包含输入ID、注意力掩码等信息，返回的是tensor类型。
