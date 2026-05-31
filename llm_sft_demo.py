@@ -1,5 +1,5 @@
 import json
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 import torch
 from llm_LLaMA2 import ModelConfig, Transformer

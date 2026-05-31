@@ -2,7 +2,7 @@
 
 import os
 import json
-from torch.utils.data import Dataset,DataLoader
+from torch.utils.data import DataLoader
 import torch
 from transformers import TrainingArguments,Trainer
 import swanlab
@@ -111,7 +111,7 @@ trainer=Trainer(
     args=training_args,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
-    data_collator=collate_fn,
+    data_collator=partial(collate_fn, pad_id=tokenizer.eos_token_id),
     optimizers=(optimizer,None),
     tokenizer=tokenizer,
 )
