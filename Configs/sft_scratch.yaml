@@ -1,0 +1,18 @@
+model:
+  dim: 512
+  n_layers: 8
+  n_heads: 8
+  vocab_size: 51200
+  max_seq_len: 512
+
+data:
+  train_path: ./data/alpaca_data_cleaned.json
+  max_length: 256
+  template: chatglm2
+
+training:
+  learning_rate: 3e-4
+  batch_size: 4
+  epochs: 4
+  save_steps: 100
+  output_dir: ./checkpoints/sft_scratch

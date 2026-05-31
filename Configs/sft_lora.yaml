@@ -1,0 +1,23 @@
+model:
+  model_path: ./models/Qwen2.5-1.5B
+
+data:
+  train_path: ./data/alpaca_data_cleaned.json
+  max_length: 512
+  template: qwen2
+
+training:
+  learning_rate: 3e-4
+  batch_size: 2
+  epochs: 3
+  fp16: true
+  save_steps: 500
+  eval_steps: 500
+  logging_steps: 50
+  output_dir: ./checkpoints/sft_lora
+
+lora:
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj]
