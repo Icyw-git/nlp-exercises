@@ -46,7 +46,7 @@ swanlab.init(  # 在使用swanlab之前先进行init
 tokenizer = AutoTokenizer.from_pretrained('tokenizer')
 
 # 预训练数据准备
-with open(cfg.data.data_path, 'r', encoding='utf-8') as f:
+with open(cfg.data.train_path, 'r', encoding='utf-8') as f:
     text = f.read()
 
 print(f'文本长度：{len(text)}')
