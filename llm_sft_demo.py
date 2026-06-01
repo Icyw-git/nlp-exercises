@@ -15,6 +15,10 @@ from src.data.collate import collate_fn
 
 from functools import partial #这里的作用是创建一个新的函数，这个新函数是原函数的一个变体，已经预先填充了一些参数。通过使用partial，我们可以固定一些参数的值，从而简化函数的调用。例如，在这里我们可以使用partial来创建一个新的collate_fn函数，其中pad_id和label_pad_id已经被固定为特定的值，这样在DataLoader中使用这个新的collate_fn时，就不需要每次都传递这些参数了。
 
+from src.training.config import load_config
+cfg=load_config('Configs/sft_scratch.yaml')
+
+
 # 设置随机种子，确保结果的可复现性，在涉及随机性的操作中，例如数据分割、模型初始化等，使用相同的随机种子可以获得一致的结果，这对于调试和比较不同实验非常有用。
 random.seed(42)
 np.random.seed(42)
@@ -31,12 +35,12 @@ with open('./data/alpaca_data_cleaned.json', 'r', encoding='utf-8') as f:
 train_data = data[:int(len(data) * 0.9)]
 val_data = data[int(len(data) * 0.9):]
 
-train_dataset=SFTDataset(train_data, tokenizer, 256,template='chatglm2', from_list=True)
-val_dataset=SFTDataset(val_data, tokenizer, 256, template='chatglm2', from_list=True)
+train_dataset=SFTDataset(train_data, tokenizer, cfg.data.max_length, template=cfg.data.template, from_list=True)
+val_dataset=SFTDataset(val_data, tokenizer, cfg.data.max_length, template=cfg.data.template, from_list=True)
 
 
-train_dataloader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id)) #在DataLoader中使用partial函数创建一个新的collate_fn函数，其中pad_id已经被固定为tokenizer.eos_token_id，这样在每次调用collate_fn时，就不需要再传递pad_id参数了，简化了代码的调用，同时确保了在数据加载过程中使用正确的pad_id进行填充。
-val_dataloader = DataLoader(val_dataset, batch_size=4, collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id))
+train_dataloader = DataLoader(train_dataset, batch_size=cfg.training.batch_size, shuffle=True, collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id)) #在DataLoader中使用partial函数创建一个新的collate_fn函数，其中pad_id已经被固定为tokenizer.eos_token_id，这样在每次调用collate_fn时，就不需要再传递pad_id参数了，简化了代码的调用，同时确保了在数据加载过程中使用正确的pad_id进行填充。
+val_dataloader = DataLoader(val_dataset, batch_size=cfg.training.batch_size, collate_fn=partial(collate_fn,pad_id=tokenizer.eos_token_id))
 
 
 def eval_on_valid_set(model, valid_loader):
@@ -61,18 +65,18 @@ swanlab.init(
     experiment='llm-sft-demo',
     tags=['sft', 'transformer'],
     config={
-        'epochs': 4,
-        'batch_size': 4,
-        'learning_rate': 3e-4,
+        'epochs': cfg.training.epochs,
+        'batch_size': cfg.training.batch_size,
+        'learning_rate': cfg.training.learning_rate,
         'model_config': args.__dict__
     }
 )
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 model = Transformer(args).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), weight_decay=0.01)
+optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.training.learning_rate, betas=(0.9, 0.95), weight_decay=0.01)
 
-epochs = 4
+epochs = cfg.training.epochs
 best_loss = float('inf')
 patience = 10
 pat_counter = 0

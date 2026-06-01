@@ -12,6 +12,9 @@ import os
 import numpy as np
 import random
 
+from src.training.config import load_config
+cfg=load_config('Configs/pretrain.yaml')
+
 # 设置随机种子
 random.seed(42)
 np.random.seed(42)
@@ -31,9 +34,9 @@ swanlab.init(  # 在使用swanlab之前先进行init
     experiment='llm-pretraining-demo',
     tags=['pretraining', 'transformer'],
     config={
-        'epochs': 3,
-        'batch_size': 4,
-        'learning_rate': 3e-4,
+        'epochs': cfg.training.epochs,
+        'batch_size': cfg.training.batch_size,
+        'learning_rate': cfg.training.learning_rate,
         'model_config': args.__dict__
         # __dict__属性是Python对象的一个内置属性，它返回一个字典，包含对象的所有属性和它们的值。在这里，args是一个ModelConfig对象，args.__dict__将返回一个字典，其中包含ModelConfig对象的所有配置参数及其对应的值，这些参数将被记录到Swanlab中，以便在实验中进行追踪和分析。
     }
@@ -53,7 +56,7 @@ tokens = tokenizer(text, return_tensors='pt')['input_ids'][
 
 print(f'分词后的长度：{len(tokens)}')
 
-max_length = 512
+max_length = cfg.data.max_length
 
 # 去除最后一块多余的部分，保证总长度是max_length的整数倍，这样可以方便后续的分块处理，避免最后一块长度不足的问题
 num_blocks = tokens.numel() // max_length
@@ -88,14 +91,14 @@ first_data = traindataset[0]
 print(f'输入ID：{first_data["input_ids"]}')
 print(f'标签：{first_data["labels"]}')
 
-trainloader = DataLoader(traindataset, batch_size=4, shuffle=True)
+trainloader = DataLoader(traindataset, batch_size=cfg.training.batch_size, shuffle=True)
 for batch in trainloader:  # 这里的batch包含input_ids和labels两个键，分别对应输入ID和标签。通过迭代dataloader，我们可以获取每个批次的数据，并在训练循环中使用这些数据进行模型的训练。
     print(f'批次输入ID：{batch["input_ids"]}')
     print(f'批次标签：{batch["labels"]}')
     break
 
 valid_dataset = Pretraindataset(valid_chunks)
-valid_loader = DataLoader(valid_dataset, batch_size=4, shuffle=False)
+valid_loader = DataLoader(valid_dataset, batch_size=cfg.training.batch_size, shuffle=False)
 
 
 def eval_on_valid_set(model, valid_loader):
@@ -114,10 +117,10 @@ def eval_on_valid_set(model, valid_loader):
         return total_loss / total_tokens
 
 
-epochs = 3
+epochs = cfg.training.epochs
 args = ModelConfig()
 model = Transformer(args).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95),
+optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.training.learning_rate, betas=(0.9, 0.95),
                               weight_decay=0.1)  # betas是Adam优化器的超参数，控制一阶矩估计和二阶矩估计的指数衰减率，weight_decay是权重衰减系数，用于正则化模型，防止过拟合
 
 best_loss = float('inf')
