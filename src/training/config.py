@@ -98,7 +98,7 @@ from typing import Optional, List
 # ============================================================
 
 
-@dataclass
+@dataclass #使用了dataclass 语法糖，将繁琐的类定义转换为直接类似的初始化
 class ModelConfig:
     """模型结构配置（从零训练 / LoRA 微调共用）"""
     dim: int = 512               # 隐藏层维度
@@ -228,9 +228,12 @@ def load_config(yaml_path: str) -> Config:
     # Step 2+3: 字典解包 → dataclass 实例 → 装进总 Config
     return Config(
         model=ModelConfig(**raw.get('model', {})),
-        #        ↑ 如果 YAML 中没写 model 段，用空字典兜底，走默认值
+        #   ↑ 如果 YAML 中没写 model 段，用空字典兜底，走默认值
         data=DataConfig(**raw.get('data', {})),
         training=TrainingConfig(**raw.get('training', {})),
         lora=LoRAConfig(**raw['lora']) if 'lora' in raw else None
         #    ↑ LoRA 配置是可选的：YAML 中有 lora 段才创建，否则为 None
     )
+
+
+#is和==的区别：is比较的是地址，==比较的是值，python里面的数据类型有可变类型和不可变类型，例如list,dict,实例是可变类型，不同变量可以公用，且都可以修改
