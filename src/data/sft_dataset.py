@@ -3,6 +3,9 @@ from torch.utils.data import Dataset
 import json
 import torch
 
+from src.data.template import build_prompt
+
+
 
 class SFTDataset(Dataset):
     def __init__(self, data_file: list, tokenizer, max_length: int, template: str, from_list=True):
@@ -24,21 +27,7 @@ class SFTDataset(Dataset):
         input = example.get('input', '')
         output = example['output']
 
-        if self.template == 'qwen2':
-            if input:
-                user_content = instruction + '\n' + input
-            else:
-                user_content = instruction
-            prompt = (
-                    "<|im_start|>system\n你是一个乐于助人的助手。<|im_end|>\n"
-                    "<|im_start|>user\n" + user_content + "<|im_end|>\n"
-                                                          "<|im_start|>assistant\n"
-            )
-        elif self.template == 'chatglm2':
-            prompt = f'###User:\n{instruction}\n{input}\n\n###Assistant:\n'
-        else:
-            raise ValueError(f'Unsupported template: {self.template}')
-
+        prompt = build_prompt(instruction, input, self.template)
         prompt_ids = self.tokenizer.encode(prompt, add_special_tokens=False)
         answer_ids = self.tokenizer.encode(output, add_special_tokens=False)
         if self.tokenizer.eos_token_id is not None:
