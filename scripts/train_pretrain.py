@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from transformers import AutoTokenizer
 from torch.utils.data import Dataset, DataLoader
@@ -8,12 +10,11 @@ import torch
 import time
 import swanlab
 from dotenv import load_dotenv
-import os
 import numpy as np
 import random
 
 from src.training.config import load_config
-cfg=load_config('Configs/pretrain.yaml')
+cfg=load_config(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Configs', 'pretrain.yaml'))
 
 # 设置随机种子
 random.seed(42)

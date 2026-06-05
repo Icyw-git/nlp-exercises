@@ -1,3 +1,6 @@
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
@@ -6,7 +9,6 @@ from llm_LLaMA2 import ModelConfig, Transformer
 import swanlab
 import time
 from dotenv import load_dotenv
-import os
 import random
 import numpy as np
 
@@ -16,7 +18,7 @@ from src.data.collate import collate_fn
 from functools import partial #这里的作用是创建一个新的函数，这个新函数是原函数的一个变体，已经预先填充了一些参数。通过使用partial，我们可以固定一些参数的值，从而简化函数的调用。例如，在这里我们可以使用partial来创建一个新的collate_fn函数，其中pad_id和label_pad_id已经被固定为特定的值，这样在DataLoader中使用这个新的collate_fn时，就不需要每次都传递这些参数了。
 
 from src.training.config import load_config
-cfg=load_config('Configs/sft_scratch.yaml')
+cfg=load_config(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Configs', 'sft_scratch.yaml'))
 
 
 # 设置随机种子，确保结果的可复现性，在涉及随机性的操作中，例如数据分割、模型初始化等，使用相同的随机种子可以获得一致的结果，这对于调试和比较不同实验非常有用。
@@ -30,7 +32,7 @@ swanlab.login(api_key)
 
 tokenizer = AutoTokenizer.from_pretrained('tokenizer')
 
-with open('./data/alpaca_data_cleaned.json', 'r', encoding='utf-8') as f:
+with open(cfg.data.train_path, 'r', encoding='utf-8') as f:
     data = json.load(f)
 train_data = data[:int(len(data) * 0.9)]
 val_data = data[int(len(data) * 0.9):]

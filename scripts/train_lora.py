@@ -1,6 +1,8 @@
 #通过transformers库完成llm训练和开发
 
-import os
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 from torch.utils.data import DataLoader
 import torch
@@ -13,7 +15,7 @@ from src.data.collate import collate_fn
 
 from functools import partial
 from src.training.config import load_config
-cfg=load_config('Configs/sft_lora.yaml')
+cfg=load_config(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'Configs', 'sft_lora.yaml'))
 
 
 
