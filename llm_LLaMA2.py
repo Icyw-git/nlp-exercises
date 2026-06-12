@@ -203,57 +203,94 @@ class Attention(nn.Module):
             # 注册为缓冲区
             self.register_buffer('mask', mask)
 
-    def forward(self, x: torch.Tensor, freqs_cos: torch.Tensor, freqs_sin: torch.Tensor):
+    def forward(self, x: torch.Tensor, freqs_cos: torch.Tensor, freqs_sin: torch.Tensor, past_kv=None):
+        # ================================================================
+        # 形状约定: 以 dim=512, n_heads=16, n_kv_heads=8, head_dim=32, n_rep=2 为例
+        # 输入: x [b, s, dim]
+        # past_kv: (k, v) 各 [b, n_kv_heads, past_len, head_dim]
+        # 输出: (output [b, s, dim], present_kv ([b, 8, total, 32], [b, 8, total, 32]))
+        # ================================================================
+        batch_size, seq_len, _ = x.size()                          # [b, s, 512]
 
-        batch_size, seq_len, _ = x.size()
+        # 1. 确定 KV Cache 的历史长度
+        if past_kv is not None:
+            past_len = past_kv[0].size(2)                          # pk 形状: [b, 8, past_len, 32]
+        else:
+            past_len = 0
 
-        # 计算q,k,v
-        xq = self.wq(x)
-        xk = self.wk(x)
-        xv = self.wv(x)
+        # 2. QKV 线性投影
+        xq = self.wq(x)   # [b, s, n_heads * head_dim] = [b, s, 512]
+        xk = self.wk(x)   # [b, s, n_kv_heads * head_dim] = [b, s, 256]
+        xv = self.wv(x)   # [b, s, n_kv_heads * head_dim] = [b, s, 256]
 
-        # 调整形状
-        xq = xq.view(batch_size, seq_len, self.n_local_heads, self.head_dim)  # 将最后一个维度分离为两个维度
+        # 3. 拆分为多头: [b, s, heads, head_dim]
+        xq = xq.view(batch_size, seq_len, self.n_local_heads, self.head_dim)        # [b, s, 16, 32]
+        xk = xk.view(batch_size, seq_len, self.n_local_kv_heads, self.head_dim)     # [b, s,  8, 32]
+        xv = xv.view(batch_size, seq_len, self.n_local_kv_heads, self.head_dim)     # [b, s,  8, 32]
 
-        xk = xk.view(batch_size, seq_len, self.n_local_kv_heads, self.head_dim)
-        xv = xv.view(batch_size, seq_len, self.n_local_kv_heads, self.head_dim)
+        # 4. RoPE 旋转位置编码（推理时从 past_len 偏移取 freqs，新 token 从历史位置继续旋转）
+        xq, xk = rotary_emb(xq, xk,
+                            freqs_cos[past_len:past_len + seq_len],
+                            freqs_sin[past_len:past_len + seq_len])
+        # 形状不变: xq [b, s, 16, 32], xk [b, s, 8, 32]
 
-        # 应用旋转嵌入
-        xq, xk = rotary_emb(xq, xk, freqs_cos, freqs_sin)
+        # 5. transpose(1,2): head 维移到 dim=1 → [b, heads, s, head_dim]（适配 sdp 标准 [N,H,L,E]）
+        xq = xq.transpose(1, 2)  # [b, 16, s, 32]
+        xk = xk.transpose(1, 2)  # [b,  8, s, 32]
+        xv = xv.transpose(1, 2)  # [b,  8, s, 32]
 
-        # 将k,v进行维度扩展 以适应分组查询注意力机制
-        xk = repeat_kv(xk, self.n_rep)
-        xv = repeat_kv(xv, self.n_rep)
+        # 6. KV Cache: 沿 seq 维 (dim=2) 拼接历史缓存
+        #    此时 xk/xv 的 dim=2 都是 seq 维，与 pk/pv 的 dim=2=past_len 对齐
+        if past_kv is not None:
+            pk, pv = past_kv                  # pk: [b, 8, past, 32], pv: [b, 8, past, 32]
+            xk = torch.cat([pk, xk], dim=2)   # → [b, 8, past+s, 32]
+            xv = torch.cat([pv, xv], dim=2)   # → [b, 8, past+s, 32]
 
-        # 将seq_len和头数置换，以适应注意力计算的标准维度
-        xq = xq.transpose(1, 2)
-        xk = xk.transpose(1, 2)
-        xv = xv.transpose(1, 2)
+        # 7. 记录当前层完整 KV（保持 KV 头维度 [b, 8, total, 32], 不做 repeat_kv 膨胀以节省显存）
+        present_kv = (xk.clone(), xv.clone())
 
+        # 8. transpose(1,2): 把 head 移回 dim=2 → [b, total, heads, head_dim], 为 repeat_kv 准备
+        xk = xk.transpose(1, 2)  # [b, total,  8, 32]
+        xv = xv.transpose(1, 2)  # [b, total,  8, 32]
+
+        # 9. GQA 分组查询注意力: KV 头从 8 扩展到 16, 匹配 Q 头数
+        xk = repeat_kv(xk, self.n_rep)  # [b, total, 16, 32]
+        xv = repeat_kv(xv, self.n_rep)  # [b, total, 16, 32]
+
+        # 10. transpose(1,2): head 回到 dim=1 → [b, 16, total, 32], 适配 sdp 输入格式 [b, H, L, E]
+        xk = xk.transpose(1, 2)  # [b, 16, total, 32]
+        xv = xv.transpose(1, 2)  # [b, 16, total, 32]
+        # 此时: xq [b, 16, s, 32]   xk [b, 16, total, 32]   xv [b, 16, total, 32]  ← head 都在 dim=1 ✅
+
+        # 11. 注意力计算
         if self.flash:
-            output = torch.nn.functional.scaled_dot_product_attention(xq, xk, xv, attn_mask=None,
-                                                                      dropout_p=self.dropout if self.training else 0)
-
+            # flash attention → [b, 16, s, 32]
+            output = torch.nn.functional.scaled_dot_product_attention(
+                xq, xk, xv, attn_mask=None,
+                dropout_p=self.dropout if self.training else 0
+            )
         else:
             # 手动实现注意力计算
-            scores = torch.matmul(xq, xk.transpose(-2, -1)) / math.sqrt(self.head_dim)  # 计算注意力分数
-
-            # 断言mask存在
+            scores = torch.matmul(xq, xk.transpose(-2, -1)) / math.sqrt(self.head_dim)
+            # scores: [b, 16, s, total]     xq:[b,16,s,32] @ xkᵀ:[b,16,32,total] → [b,16,s,total]
             assert hasattr(self, 'mask')
-
-            scores = scores + self.mask[:, :, :seq_len, :seq_len]  # 与输入长度对齐
-            score = F.softmax(scores.float(), dim=-1).type_as(xq)
+            # 训练时加因果 mask; 推理有 KV Cache 时新 token 天然在序列末端, 因果性自动满足, 跳过
+            if past_kv is None:
+                scores = scores + self.mask[:, :, :seq_len, :seq_len]
+            scores = F.softmax(scores.float(), dim=-1).type_as(xq)
             scores = self.attn_dropout(scores)
-            output = torch.matmul(scores, xv)
+            output = torch.matmul(scores, xv)  # [b,16,s,total] @ [b,16,total,32] → [b, 16, s, 32]
 
-        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len,
-                                                          -1)  # 将头数和每个头的维数合并回原始的维度，以便进行后续的线性变换和输出。首先，使用transpose(1, 2)将头数维度和序列长度维度交换位置，使得输出张量的形状变为 (batch_size, n_heads, seq_len, head_dim)。然后，使用contiguous()确保张量在内存中是连续的，以便进行后续的view操作。最后，使用view(batch_size, seq_len, -1)将头数维度和每个头的维数合并回原始的维度，使得输出张量的形状变为 (batch_size, seq_len, n_heads * head_dim)，以适应后续的线性变换和输出。
+        # 12. 合并多头特征回原始维度: [b,16,s,32] → [b,s,512]
+        output = output.transpose(1, 2).contiguous().view(batch_size, seq_len, -1)
+        # transpose(1,2): [b, s, 16, 32]  →  contiguous + view: [b, s, 512]
 
-        # 投影回输入维度
-        output = self.wo(output)
-        output = self.resid_dropout(
-            output)  # 在输出上应用残差连接的dropout，以防止过拟合并提高模型的泛化能力。残差连接是一种常见的技术，在深度神经网络中使用，通过将输入直接添加到输出中来帮助缓解梯度消失问题，并促进更深层次的网络训练。通过在残差连接上应用dropout，可以进一步增强模型的鲁棒性和性能。
-        return output
+        # 13. 输出投影 + dropout
+        output = self.wo(output)          # [b, s, dim]
+        output = self.resid_dropout(output)
+
+        # 返回: (output [b, s, dim], present_kv ([b, 8, total, 32], [b, 8, total, 32]))
+        return output, present_kv
 
 
 class MLP(nn.Module):
